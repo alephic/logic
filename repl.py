@@ -1,5 +1,6 @@
 
 from parse import *
+import readline
 
 def repl():
   bindings = {}
