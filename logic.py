@@ -78,7 +78,7 @@ class PatternVar(Expression):
     else:
       return False
 
-# A symbol (variable reference or constant)
+# A symbol
 class Sym(Expression):
   def __init__(self, sym_id):
     self.sym_id = sym_id
@@ -103,31 +103,32 @@ class Gap(Expression):
     return True
 
 class Rel(Expression):
-  def __init__(self, *components):
+  def __init__(self, sym_id, *components):
+    self.sym_id = sym_id
     self.components = components
   def __repr__(self):
-    return '('+' '.join(repr(c) for c in self.components)+')'
+    return str(self.sym_id)+'{'+' '.join(repr(c) for c in self.components)+'}'
   def subst(self, bindings):
-    return Rel(*(c.subst(bindings) for c in self.components))
+    return Rel(self.sym_id, *(c.subst(bindings) for c in self.components))
   def collect_var_ids(self, var_ids):
     for c in self.components:
       c.collect_var_ids(var_ids)
   def match(self, other, bindings):
-    if not (isinstance(other, Rel) and len(self.components) == len(other.components)):
+    if not (isinstance(other, Rel) and self.sym_id == other.sym_id and len(self.components) == len(other.components)):
       return False
     for (c1, c2) in zip(self.components, other.components):
       if not c1.match(c2, bindings):
         return False
     return True
   def evaluate(self, bindings, world):
-    return Rel(*(c.evaluate(bindings, world) for c in self.components))
+    return Rel(self.sym_id, *(c.evaluate(bindings, world) for c in self.components))
 
 class Lambda(Expression):
   def __init__(self, arg_pattern, body):
     self.arg_pattern = arg_pattern
     self.body = body
   def __repr__(self):
-    return '('+repr(self.arg_pattern)+' -> '+repr(self.body)+')'
+    return '['+repr(self.arg_pattern)+' '+repr(self.body)+']'
   def subst(self, bindings):
     shadow = Shadow(bindings)
     self.arg_pattern.collect_var_ids(shadow.shadowed)
@@ -143,7 +144,7 @@ class Apply(Expression):
     self.lambda_expr = lambda_expr
     self.arg_expr = arg_expr
   def __repr__(self):
-    return '['+repr(self.lambda_expr)+' '+repr(self.arg_expr)+']'
+    return '('+repr(self.lambda_expr)+' '+repr(self.arg_expr)+')'
   def subst(self, bindings):
     return Apply(self.lambda_expr.subst(bindings), self.arg_expr.subst(bindings))
   def collect_var_ids(self, var_ids):
@@ -165,5 +166,5 @@ class Apply(Expression):
     if lambda_val.arg_pattern.match(arg_val, shadow):
       return lambda_val.body.evaluate(scope, world)
     else:
-      return Apply(lambda_val, arg_val)
+      raise LogicError("Failed to evaluate: Argument pattern %s doesn't match supplied value %s\n  in: %s" % (repr(lambda_val.arg_pattern), repr(arg_val), repr(self)))
 

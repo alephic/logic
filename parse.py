@@ -6,7 +6,10 @@ LPAREN = re.compile(r'\(')
 RPAREN = re.compile(r'\)')
 LBRACK = re.compile(r'\[')
 RBRACK = re.compile(r'\]')
-SYM = re.compile(r'[^()\[\]\$@\s]+')
+LBRACE = re.compile(r'\{')
+RBRACE = re.compile(r'\}')
+SYM = re.compile(r'[^()\[\]\$@\s\{\}]+')
+GAP = re.compile(r'_')
 VAR = re.compile(r'\$')
 PATTERN = re.compile(r'@')
 SPACES = re.compile(r'\s*')
@@ -25,15 +28,21 @@ def parse_re(r, t):
 
 def parse_rel(t):
   reset = t.pos
-  if parse_re(LPAREN, t):
+  s = parse_re(SYM, t)
+  if not s:
+    t.pos = reset
+    return None
+  if s == '_':
+    return Gap()
+  parse_re(SPACES, t)
+  if parse_re(LBRACE, t):
     components = []
     while True:
       parse_re(SPACES, t)
-      if parse_re(RPAREN, t):
-        if len(components) == 3 and isinstance(components[1], Sym) and components[1].sym_id == '->':
-          return Lambda(components[0], components[2])
-        else:
-          return Rel(*components)
+      if parse_re(RBRACE, t):
+        if len(components) == 0:
+          return Sym(s)
+        return Rel(s, *components)
       else:
         m = parse_expr(t)
         if m:
@@ -42,10 +51,24 @@ def parse_rel(t):
           t.pos = reset
           return None
   else:
-    t.pos = reset
-    return None
+    return Sym(s)
 
 def parse_apply(t):
+  reset = t.pos
+  if parse_re(LPAREN, t):
+    parse_re(SPACES, t)
+    m1 = parse_expr(t)
+    if m1:
+      parse_re(SPACES, t)
+      m2 = parse_expr(t)
+      if m2:
+        parse_re(SPACES, t)
+        if parse_re(RPAREN, t):
+          return Apply(m1, m2)
+  t.pos = reset
+  return None
+
+def parse_lambda(t):
   reset = t.pos
   if parse_re(LBRACK, t):
     parse_re(SPACES, t)
@@ -56,7 +79,7 @@ def parse_apply(t):
       if m2:
         parse_re(SPACES, t)
         if parse_re(RBRACK, t):
-          return Apply(m1, m2)
+          return Lambda(m1, m2)
   t.pos = reset
   return None
 
@@ -78,15 +101,8 @@ def parse_var(t):
     t.pos = reset
     return None
 
-def parse_sym(t):
-  m = parse_re(SYM, t)
-  if m:
-    return Gap() if m == '_' else Sym(m)
-  else:
-    return None
-
 def parse_expr(t):
-  return parse_rel(t) or parse_apply(t) or parse_var(t) or parse_sym(t)
+  return parse_lambda(t) or parse_apply(t) or parse_var(t) or parse_rel(t)
 
 def parse(s):
   return parse_expr(Tracker(s))
