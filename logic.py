@@ -188,6 +188,8 @@ class Apply(Expression):
     pred_val = self.pred_expr.evaluate(bindings, world)
     arg_val = self.arg_expr.evaluate(bindings, world)
     if not isinstance(pred_val, Lambda):
+      if isinstance(pred_val, Rel):
+        return Rel(*pred_val.components, arg_val)
       return Rel(pred_val, arg_val)
     shadow = Shadow(bindings)
     scope = Scope(shadow)
