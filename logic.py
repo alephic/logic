@@ -21,6 +21,14 @@ class Shadow:
   def __repr__(self):
     return repr(self.base_dict)+' - '+repr(self.shadowed)
 
+class World:
+  def __init__(self, facts=[]):
+    self.facts = facts
+  def check(self, claim):
+    return False
+
+EMPTY = World()
+
 class LogicError(Exception):
   def __init__(self, message):
     self.message = message
@@ -30,10 +38,10 @@ class Expression:
     raise NotImplementedError()
   def collect_var_ids(self, var_ids):
     raise NotImplementedError()
-  def match(self, other, bindings):
+  def match(self, other, bindings, world):
     raise NotImplementedError()
   def __eq__(self, other):
-    return self.match(other, {})
+    raise NotImplementedError()
   def evaluate(self, bindings, world):
     return self.subst(bindings)
 
@@ -49,7 +57,7 @@ class Var(Expression):
     return bindings[self.var_id] if self.var_id in bindings else self
   def collect_var_ids(self, var_ids):
     var_ids[self.var_id] = True
-  def match(self, other, bindings):
+  def match(self, other, bindings, world):
     if self.var_id in bindings:
       return bindings[self.var_id] == other
     else:
@@ -69,14 +77,16 @@ class PatternVar(Expression):
   def collect_var_ids(self, var_ids):
     var_ids[self.var_id] = True
     self.pattern.collect_var_ids(var_ids)
-  def match(self, other, bindings):
+  def match(self, other, bindings, world):
     if self.var_id in bindings:
       return bindings[self.var_id] == other
-    elif self.pattern.match(other, bindings):
+    elif self.pattern.match(other, bindings, world):
       bindings[self.var_id] = other
       return True
     else:
       return False
+  def __eq__(self, other):
+    return isinstance(other, PatternVar) and self.var_id == other.var_id and self.pattern == other.pattern
 
 # A symbol
 class Sym(Expression):
@@ -88,7 +98,9 @@ class Sym(Expression):
     return self
   def collect_var_ids(self, var_ids):
     pass
-  def match(self, other, bindings):
+  def match(self, other, bindings, world):
+    return self.__eq__(other)
+  def __eq__(self, other):
     return isinstance(other, Sym) and self.sym_id == other.sym_id
 
 # Pattern-match wildcard
@@ -99,72 +111,99 @@ class Gap(Expression):
     return self
   def collect_var_ids(self, var_ids):
     pass
-  def match(self, other, bindings):
+  def match(self, other, bindings, world):
     return True
+  def __eq__(self, other):
+    return isinstance(other, Gap)
 
 class Rel(Expression):
-  def __init__(self, sym_id, *components):
-    self.sym_id = sym_id
+  def __init__(self, *components):
     self.components = components
   def __repr__(self):
-    return str(self.sym_id)+'{'+' '.join(repr(c) for c in self.components)+'}'
+    return '('+' '.join(map(repr, self.components))+')'
   def subst(self, bindings):
-    return Rel(self.sym_id, *(c.subst(bindings) for c in self.components))
+    return Rel(*(c.subst(bindings) for c in self.components))
   def collect_var_ids(self, var_ids):
     for c in self.components:
       c.collect_var_ids(var_ids)
-  def match(self, other, bindings):
-    if not (isinstance(other, Rel) and self.sym_id == other.sym_id and len(self.components) == len(other.components)):
+  def match(self, other, bindings, world):
+    if not (isinstance(other, Rel) and len(self.components) == len(other.components)):
       return False
     for (c1, c2) in zip(self.components, other.components):
-      if not c1.match(c2, bindings):
+      if not c1.match(c2, bindings, world):
         return False
     return True
   def evaluate(self, bindings, world):
-    return Rel(self.sym_id, *(c.evaluate(bindings, world) for c in self.components))
+    return Rel(*(c.evaluate(bindings, world) for c in self.components))
+  def __eq__(self, other):
+    return isinstance(other, Rel) and self.components == other.components
 
 class Lambda(Expression):
-  def __init__(self, arg_pattern, body):
+  def __init__(self, arg_pattern, arg_constraint, body):
     self.arg_pattern = arg_pattern
+    self.arg_constraint = arg_constraint
     self.body = body
   def __repr__(self):
-    return '['+repr(self.arg_pattern)+' '+repr(self.body)+']'
+    if self.arg_constraint:
+      return '<'+repr(self.arg_pattern)+': '+repr(self.arg_constraint)+'> '+repr(self.body)
+    return '<'+repr(self.arg_pattern)+'> '+repr(self.body)
   def subst(self, bindings):
     shadow = Shadow(bindings)
     self.arg_pattern.collect_var_ids(shadow.shadowed)
+    self.arg_constraint.collect_var_ids(shadow.shadowed)
     return Lambda(self.arg_pattern.subst(shadow), self.body.subst(shadow))
   def collect_var_ids(self, var_ids):
     self.arg_pattern.collect_var_ids(var_ids)
+    self.arg_constraint.collect_var_ids(var_ids)
     self.body.collect_var_ids(var_ids)
-  def match(self, other, bindings):
+  def match(self, other, bindings, world):
     return False
+  def __eq__(self, other):
+    if not isinstance(other, Lambda):
+      return False
+    b = {}
+    if not self.arg_pattern.match(other.arg_pattern, b, EMPTY):
+      return False
+    if not self.arg_constraint.match(other.arg_constraint, b, EMPTY):
+      return False
+    return self.body.subst(b) == other.body
   
 class Apply(Expression):
-  def __init__(self, lambda_expr, arg_expr):
-    self.lambda_expr = lambda_expr
+  def __init__(self, pred_expr, arg_expr):
+    self.pred_expr = pred_expr
     self.arg_expr = arg_expr
   def __repr__(self):
-    return '('+repr(self.lambda_expr)+' '+repr(self.arg_expr)+')'
+    return '('+repr(self.pred_expr)+' '+repr(self.arg_expr)+')'
   def subst(self, bindings):
-    return Apply(self.lambda_expr.subst(bindings), self.arg_expr.subst(bindings))
+    return Apply(self.pred_expr.subst(bindings), self.arg_expr.subst(bindings))
   def collect_var_ids(self, var_ids):
-    self.lambda_expr.collect_var_ids(var_ids)
+    self.pred_expr.collect_var_ids(var_ids)
     self.arg_expr.collect_var_ids(var_ids)
   def match(self, other, bindings):
     # return False
     return isinstance(other, Apply) \
-      and self.lambda_expr.match(other.lambda_expr) \
-      and self.arg_expr.match(other.arg_expr)
+      and self.pred_expr.match(other.pred_expr, bindings) \
+      and self.arg_expr.match(other.arg_expr, bindings)
   def evaluate(self, bindings, world):
-    lambda_val = self.lambda_expr.evaluate(bindings, world)
+    pred_val = self.pred_expr.evaluate(bindings, world)
     arg_val = self.arg_expr.evaluate(bindings, world)
-    if not isinstance(lambda_val, Lambda):
-      return Apply(lambda_val, arg_val)
-    scope = Scope(bindings)
-    shadow = Shadow(scope)
-    lambda_val.arg_pattern.collect_var_ids(shadow.shadowed)
-    if lambda_val.arg_pattern.match(arg_val, shadow):
-      return lambda_val.body.evaluate(scope, world)
+    if not isinstance(pred_val, Lambda):
+      return Rel(pred_val, arg_val)
+    shadow = Shadow(bindings)
+    scope = Scope(shadow)
+    pred_val.arg_pattern.collect_var_ids(shadow.shadowed)
+    if pred_val.arg_constraint:
+      pred_val.arg_constraint.collect_var_ids(shadow.shadowed)
+    if pred_val.arg_pattern.match(arg_val, scope):
+      if pred_val.arg_constraint:
+        evald = pred_val.arg_constraint.evaluate(scope)
+        check_res = world.check(evald)
+        if check_res:
+          evald.match(check_res, scope)
+          return pred_val.body.evaluate(scope, world)
+        raise LogicError("Failed to evaluate: Argument constraint %s not satisfied by supplied value %s\n  in: %s" % (repr(pred_val.arg_constraint), repr(arg_val), repr(self)))
+      return pred_val.body.evaluate(scope, world)
     else:
-      raise LogicError("Failed to evaluate: Argument pattern %s doesn't match supplied value %s\n  in: %s" % (repr(lambda_val.arg_pattern), repr(arg_val), repr(self)))
-
+      raise LogicError("Failed to evaluate: Argument pattern %s doesn't match supplied value %s\n  in: %s" % (repr(pred_val.arg_pattern), repr(arg_val), repr(self)))
+  def __eq__(self, other):
+    return isinstance(other, Apply) and self.pred_expr == other.pred_expr and self.arg_expr == other.arg_expr

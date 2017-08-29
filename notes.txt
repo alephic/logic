@@ -1,0 +1,27 @@
+Apply:
+
+  func arg
+  f x
+  f x y
+  f (g x) y
+
+Symbolic constants behave as constructors when applied
+Lambdas behave as functions when applied
+Lambda:
+
+  <$arg> body
+  <$x> y
+  <$arg: constraint> body
+  <$x: c x y> z
+  <$x> <$y> f x y
+
+Declare:
+
+  {declaration} body
+  {c x y} f x
+
+Query:
+
+  [$arg: constraint]
+  [$x: c x]
+
