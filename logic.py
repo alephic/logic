@@ -206,7 +206,7 @@ class Apply(Expression):
       if check_res:
         evald.match(check_res, scope)
         return pred_val.body.evaluate(scope, world)
-      raise LogicError("Failed to evaluate: Argument constraint %s not satisfied by argument value %s\n  in: %s" % (repr(pred_val.arg_constraint), repr(arg_val), repr(self)))
+      raise LogicError("Failed to evaluate: Argument constraint %s not satisfied by argument value %s\n  in: %s" % (repr(pred_val.arg_constraint), repr(arg_val), repr(Apply(pred_val, arg_val))))
     return pred_val.body.evaluate(scope, world)
   def __eq__(self, other):
     return isinstance(other, Apply) and self.pred_expr == other.pred_expr and self.arg_expr == other.arg_expr

@@ -16,7 +16,7 @@ def repl():
         parse_re(SPACES, t)
         sym = parse_re(SYM, t)
         parse_re(SPACES, t)
-        expr = parse_expr(t, {}).evaluate({}, world)
+        expr = parse_expr(t, bindings).evaluate(bindings, world)
         if expr:
           bindings[sym] = expr
           print('%s := %s' % (sym, repr(expr)))
@@ -24,7 +24,7 @@ def repl():
       if i.startswith(':decl'):
         t = Tracker(i, pos=5)
         parse_re(SPACES, t)
-        expr = parse_expr(t, {}).evaluate({}, world)
+        expr = parse_expr(t, bindings).evaluate(bindings, world)
         if expr:
           world.add_fact(expr)
           print(repr(expr))
@@ -32,7 +32,7 @@ def repl():
       p = parse(i, bindings)
       if p:
         try:
-          print(p.evaluate({}, world))
+          print(p.evaluate(bindings, world))
         except LogicError as e:
           print(e.message)
       else:
