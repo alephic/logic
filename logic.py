@@ -44,6 +44,8 @@ class Expression:
     raise NotImplementedError()
   def evaluate(self, bindings, world):
     return self.subst(bindings)
+  def repr_closed(self):
+    return repr(self)
 
 # A variable
 class Var(Expression):
@@ -54,7 +56,7 @@ class Var(Expression):
   def __eq__(self, other):
     return isinstance(other, Var) and other.var_id == self.var_id
   def subst(self, bindings):
-    return bindings[self.var_id] if self.var_id in bindings else self
+    return self
   def collect_var_ids(self, var_ids):
     var_ids[self.var_id] = True
   def match(self, other, bindings):
@@ -70,10 +72,9 @@ class PatternVar(Expression):
     self.var_id = var_id
     self.pattern = pattern
   def __repr__(self):
-    return '$'+str(self.var_id)+'@'+repr(self.pattern)
+    return '$'+str(self.var_id)+'@'+self.pattern.repr_closed()
   def subst(self, bindings):
-    return bindings[self.var_id] if self.var_id in bindings \
-      else PatternVar(self.var_id, self.pattern.subst(bindings))
+    return PatternVar(self.var_id, self.pattern.subst(bindings))
   def collect_var_ids(self, var_ids):
     var_ids[self.var_id] = True
     self.pattern.collect_var_ids(var_ids)
@@ -95,7 +96,7 @@ class Sym(Expression):
   def __repr__(self):
     return str(self.sym_id)
   def subst(self, bindings):
-    return self
+    return bindings[self.sym_id] if self.sym_id in bindings else self
   def collect_var_ids(self, var_ids):
     pass
   def match(self, other, bindings):
@@ -120,7 +121,9 @@ class Rel(Expression):
   def __init__(self, *components):
     self.components = components
   def __repr__(self):
-    return '('+' '.join(map(repr, self.components))+')'
+    return ' '.join((c.repr_closed() for c in self.components))
+  def repr_closed(self):
+    return '('+repr(self)+')'
   def subst(self, bindings):
     return Rel(*(c.subst(bindings) for c in self.components))
   def collect_var_ids(self, var_ids):
@@ -147,36 +150,31 @@ class Lambda(Expression):
     if self.arg_constraint:
       return '<'+repr(self.arg_pattern)+': '+repr(self.arg_constraint)+'> '+repr(self.body)
     return '<'+repr(self.arg_pattern)+'> '+repr(self.body)
+  def repr_closed(self):
+    return '('+repr(self)+')'
   def subst(self, bindings):
     shadow = Shadow(bindings)
     self.arg_pattern.collect_var_ids(shadow.shadowed)
     if self.arg_constraint:
       self.arg_constraint.collect_var_ids(shadow.shadowed)
-    return Lambda(self.arg_pattern.subst(shadow), self.body.subst(shadow))
+    return Lambda(self.arg_pattern.subst(shadow), self.arg_constraint.subst(shadow), self.body.subst(shadow))
   def collect_var_ids(self, var_ids):
-    self.arg_pattern.collect_var_ids(var_ids)
-    if self.arg_constraint:
-      self.arg_constraint.collect_var_ids(var_ids)
-    self.body.collect_var_ids(var_ids)
+    pass
   def match(self, other, bindings):
     return False
   def __eq__(self, other):
-    # NOTE: this might be dumb
-    if not isinstance(other, Lambda):
-      return False
-    b = {}
-    if not self.arg_pattern.match(other.arg_pattern, b, EMPTY):
-      return False
-    if self.arg_constraint and not self.arg_constraint.match(other.arg_constraint, b, EMPTY):
-      return False
-    return self.body.subst(b) == other.body
+    return False
   
 class Apply(Expression):
   def __init__(self, pred_expr, arg_expr):
     self.pred_expr = pred_expr
     self.arg_expr = arg_expr
   def __repr__(self):
-    return '('+repr(self.pred_expr)+' '+repr(self.arg_expr)+')'
+    if isinstance(self.pred_expr, Apply):
+      return repr(self.pred_expr)+' '+self.arg_expr.repr_closed()
+    return self.pred_expr.repr_closed()+' '+self.arg_expr.repr_closed()
+  def repr_closed(self):
+    return '('+repr(self)+')'
   def subst(self, bindings):
     return Apply(self.pred_expr.subst(bindings), self.arg_expr.subst(bindings))
   def collect_var_ids(self, var_ids):
@@ -233,10 +231,4 @@ class Query(Expression):
   def match(self, other, bindings):
     return False
   def __eq__(self, other):
-    # NOTE: this might be dumb
-    if not isinstance(other, Query):
-      return False
-    b = {}
-    if not self.val_pattern.match(other.val_pattern, b, EMPTY):
-      return False
-    return self.val_constraint.subst(b) == other.val_constraint
+    return False
