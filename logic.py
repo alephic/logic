@@ -119,30 +119,6 @@ class Gap(Expression):
   def __eq__(self, other):
     return isinstance(other, Gap)
 
-class Rel(Expression):
-  def __init__(self, *components):
-    self.components = components
-  def __repr__(self):
-    return ' '.join((c.repr_closed() for c in self.components))
-  def repr_closed(self):
-    return '('+repr(self)+')'
-  def subst(self, bindings, subst_vars=False):
-    return Rel(*(c.subst(bindings, subst_vars) for c in self.components))
-  def collect_var_ids(self, var_ids):
-    for c in self.components:
-      c.collect_var_ids(var_ids)
-  def match(self, other, bindings):
-    if not (isinstance(other, Rel) and len(self.components) == len(other.components)):
-      return False
-    for (c1, c2) in zip(self.components, other.components):
-      if not c1.match(c2, bindings):
-        return False
-    return True
-  def evaluate(self, bindings, world):
-    return Rel(*(c.evaluate(bindings, world) for c in self.components))
-  def __eq__(self, other):
-    return isinstance(other, Rel) and self.components == other.components
-
 class Lambda(Expression):
   def __init__(self, arg_pattern, arg_constraint, body):
     self.arg_pattern = arg_pattern
@@ -191,9 +167,7 @@ class Apply(Expression):
     pred_val = self.pred_expr.evaluate(bindings, world)
     arg_val = self.arg_expr.evaluate(bindings, world)
     if not isinstance(pred_val, Lambda):
-      if isinstance(pred_val, Rel):
-        return Rel(*pred_val.components, arg_val)
-      return Rel(pred_val, arg_val)
+      return Apply(pred_val, arg_val)
     shadow = Shadow(bindings)
     scope = Scope(shadow)
     pred_val.arg_pattern.collect_var_ids(shadow.shadowed)
