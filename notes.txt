@@ -30,3 +30,6 @@ Query:
   [name; corollary: constraint]
   [name; corollary1, corollary2: constraint]
 
+Fact table
+
+  value at index -> sub-table or list of facts

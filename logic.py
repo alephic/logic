@@ -1,3 +1,4 @@
+import itertools
 
 class Scope(dict):
   def __init__(self, base_dict):
@@ -21,13 +22,58 @@ class Shadow:
   def __repr__(self):
     return repr(self.base_dict)+' - '+repr(self.shadowed)
 
-class World:
-  def __init__(self, facts=[]):
-    pass
-  def check(self, claim):
-    return False
+def flatten(expr):
+  if isinstance(expr, Apply):
+    for x in flatten(expr.pred_expr):
+      yield x
+    yield expr.arg_expr
+  else:
+    yield expr
 
-EMPTY = World()
+class Fact:
+  def __init__(self, expr):
+    self.expr = expr
+    self.positions = tuple(flatten(expr))
+
+class Table:
+  def __init__(self):
+    self.branches = {}
+    self.leaves = []
+  def add(self, fact, i=0):
+    if i >= len(fact.positions) - 1:
+      self.leaves.append(fact)
+    else:
+      if fact.positions[i] not in self.branches:
+        self.branches[fact.positions[i]] = Table()
+      self.branches[fact.positions[i]].add(fact, i=i+1)
+  def get_matches(self, pattern_flat, bindings, i=0):
+    if i >= len(pattern_flat) - 1:
+      for leaf in self.leaves:
+        s = Scope(bindings)
+        if pattern_flat[i].match(leaf.positions[i], s):
+          yield leaf.expr
+    for x, b in self.branches.items():
+      s = Scope(bindings)
+      if pattern_flat[i].match(x, s):
+        for m in b.get_matches(pattern_flat, s, i=i+1):
+          yield m
+
+class World:
+  def __init__(self):
+    self.fact_table = Table()
+  def find_match(self, pattern):
+    return next(itertools.chain(self.fact_table.get_matches(tuple(flatten(pattern)), {}), [None]))
+  def add_fact(self, expr):
+    self.fact_table.add(Fact(expr))
+
+class ScopedWorld(World):
+  def __init__(self, base):
+    super().__init__()
+    self.base = base
+  def find_match(self, pattern):
+    return super().find_match(pattern) or self.base.find_match(pattern)
+
+EMPTY = Table()
 
 class LogicError(Exception):
   def __init__(self, message):
@@ -44,6 +90,8 @@ class Expression:
     return self.subst(bindings)
   def repr_closed(self):
     return repr(self)
+  def collect_ref_ids(self, ref_ids):
+    raise NotImplementedError()
 
 # A symbol
 class Sym(Expression):
@@ -57,6 +105,10 @@ class Sym(Expression):
     return self.__eq__(other)
   def __eq__(self, other):
     return isinstance(other, Sym) and self.sym_id == other.sym_id
+  def __hash__(self):
+    return hash(self.sym_id)
+  def collect_ref_ids(self, ref_ids):
+    pass
 
 class Ref(Expression):
   def __init__(self, sym_id):
@@ -72,6 +124,10 @@ class Ref(Expression):
     return True
   def __eq__(self, other):
     return isinstance(other, Ref) and self.sym_id == other.sym_id
+  def __hash__(self):
+    return hash(self.sym_id)
+  def collect_ref_ids(self, ref_ids):
+    ref_ids[self.ref_id] = True
 
 def list_ids(primary, corollaries):
   if len(corollaries) == 0:
@@ -99,7 +155,20 @@ class Lambda(Expression):
   def match(self, other, bindings):
     return False
   def __eq__(self, other):
-    return False
+    return self is other
+  def __hash__(self):
+    return id(self)
+  def collect_ref_ids(self, ref_ids):
+    inner = {}
+    if self.arg_constraint:
+      self.arg_constraint.collect_ref_ids(inner)
+    self.body.collect_ref_ids(inner)
+    if self.arg_id in inner:
+      del inner[self.arg_id]
+    for corollary_id in self.corollary_ids:
+      if corollary_id in inner:
+        del inner[corollary_id]
+    ref_ids.update(inner)
   
 class Apply(Expression):
   def __init__(self, pred_expr, arg_expr):
@@ -133,7 +202,7 @@ class Apply(Expression):
       shadow.shadowed[corollary_id] = True
     if pred_val.arg_constraint:
       evald = pred_val.arg_constraint.evaluate(scope, world)
-      check_res = world.check(evald)
+      check_res = world.find_match(evald)
       if check_res:
         evald.match(check_res, scope)
         return pred_val.body.evaluate(scope, world)
@@ -141,6 +210,11 @@ class Apply(Expression):
     return pred_val.body.evaluate(scope, world)
   def __eq__(self, other):
     return isinstance(other, Apply) and self.pred_expr == other.pred_expr and self.arg_expr == other.arg_expr
+  def __hash__(self):
+    return hash(self.pred_expr) ^ hash(self.arg_expr)
+  def collect_ref_ids(self, ref_ids):
+    self.pred_expr.collect_ref_ids(ref_ids)
+    self.arg_expr.collect_ref_ids(ref_ids)
 
 class Query(Expression):
   def __init__(self, val_id, val_constraint, corollary_ids=[]):
@@ -161,7 +235,7 @@ class Query(Expression):
     for corollary_id in self.corollary_ids:
       shadow.shadowed[corollary_id] = True
     evald = self.val_constraint.evaluate(shadow, world)
-    check_res = world.check(evald)
+    check_res = world.find_match(evald)
     if not check_res:
       raise LogicError("No candidates found for %s in current environment\n  in: %s" % (repr(self.val_id), repr(self)))
     scope = Scope(shadow)
@@ -170,7 +244,18 @@ class Query(Expression):
   def match(self, other, bindings):
     return False
   def __eq__(self, other):
-    return False
+    return self is other
+  def __hash__(self):
+    return id(self)
+  def collect_ref_ids(self, ref_ids):
+    inner = {}
+    self.val_constraint.collect_ref_ids(inner)
+    if self.val_id in inner:
+      del inner[self.val_id]
+    for corollary_id in self.corollary_ids:
+      if corollary_id in inner:
+        del inner[corollary_id]
+    ref_ids.update(inner)
 
 class With(Expression):
   def __init__(self, with_expr, body):
@@ -186,8 +271,13 @@ class With(Expression):
     return isinstance(other, With) and self.with_expr.match(other.with_expr, bindings) and self.body.match(other.body, bindings)
   def __eq__(self, other):
     return isinstance(other, With) and self.with_expr == other.with_expr and self.body == other.body
+  def __hash__(self):
+    return hash(With) ^ hash(self.with_expr) ^ hash(self.body)
   def evaluate(self, bindings, world):
     evald = self.with_expr.evaluate(bindings, world)
     # TODO: add evald to scoped world
     scoped_world = world
     return self.body.evaluate(bindings, scoped_world)
+  def collect_ref_ids(self, ref_ids):
+    self.with_expr.collect_ref_ids(ref_ids)
+    self.body.collect_ref_ids(ref_ids)
