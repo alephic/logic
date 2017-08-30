@@ -23,7 +23,7 @@ class Shadow:
 
 class World:
   def __init__(self, facts=[]):
-    self.facts = facts
+    self.
   def check(self, claim):
     return False
 
@@ -34,7 +34,7 @@ class LogicError(Exception):
     self.message = message
 
 class Expression:
-  def subst(self, bindings):
+  def subst(self, bindings, subst_vars=False):
     raise NotImplementedError()
   def collect_var_ids(self, var_ids):
     raise NotImplementedError()
@@ -55,10 +55,10 @@ class Var(Expression):
     return '$'+str(self.var_id)
   def __eq__(self, other):
     return isinstance(other, Var) and other.var_id == self.var_id
-  def subst(self, bindings):
-    return self
+  def subst(self, bindings, subst_vars=False):
+    return self if not subst_vars else bindings.get(self.var_id, self)
   def collect_var_ids(self, var_ids):
-    var_ids[self.var_id] = True
+    var_ids[self.var_id] = self
   def match(self, other, bindings):
     if self.var_id in bindings:
       return bindings[self.var_id] == other
@@ -73,10 +73,12 @@ class PatternVar(Expression):
     self.pattern = pattern
   def __repr__(self):
     return '$'+str(self.var_id)+'@'+self.pattern.repr_closed()
-  def subst(self, bindings):
-    return PatternVar(self.var_id, self.pattern.subst(bindings))
+  def subst(self, bindings, subst_vars=False):
+    if subst_vars and self.var_id in bindings:
+      return bindings[self.var_id]
+    return PatternVar(self.var_id, self.pattern.subst(bindings, subst_vars))
   def collect_var_ids(self, var_ids):
-    var_ids[self.var_id] = True
+    var_ids[self.var_id] = self
     self.pattern.collect_var_ids(var_ids)
   def match(self, other, bindings):
     if self.var_id in bindings:
@@ -95,8 +97,8 @@ class Sym(Expression):
     self.sym_id = sym_id
   def __repr__(self):
     return str(self.sym_id)
-  def subst(self, bindings):
-    return bindings[self.sym_id] if self.sym_id in bindings else self
+  def subst(self, bindings, subst_vars=False):
+    return bindings[self.sym_id] if (self.sym_id in bindings) and subst_vars else self
   def collect_var_ids(self, var_ids):
     pass
   def match(self, other, bindings):
@@ -108,7 +110,7 @@ class Sym(Expression):
 class Gap(Expression):
   def __repr__(self):
     return '_'
-  def subst(self, bindings):
+  def subst(self, bindings, subst_vars=False):
     return self
   def collect_var_ids(self, var_ids):
     pass
@@ -124,8 +126,8 @@ class Rel(Expression):
     return ' '.join((c.repr_closed() for c in self.components))
   def repr_closed(self):
     return '('+repr(self)+')'
-  def subst(self, bindings):
-    return Rel(*(c.subst(bindings) for c in self.components))
+  def subst(self, bindings, subst_vars=False):
+    return Rel(*(c.subst(bindings, subst_vars) for c in self.components))
   def collect_var_ids(self, var_ids):
     for c in self.components:
       c.collect_var_ids(var_ids)
@@ -152,12 +154,12 @@ class Lambda(Expression):
     return '<'+repr(self.arg_pattern)+'> '+repr(self.body)
   def repr_closed(self):
     return '('+repr(self)+')'
-  def subst(self, bindings):
+  def subst(self, bindings, subst_vars=False):
     shadow = Shadow(bindings)
     self.arg_pattern.collect_var_ids(shadow.shadowed)
     if self.arg_constraint:
       self.arg_constraint.collect_var_ids(shadow.shadowed)
-    return Lambda(self.arg_pattern.subst(shadow), self.arg_constraint.subst(shadow), self.body.subst(shadow))
+    return Lambda(self.arg_pattern.subst(shadow, subst_vars), self.arg_constraint.subst(shadow, subst_vars), self.body.subst(shadow, subst_vars))
   def collect_var_ids(self, var_ids):
     pass
   def match(self, other, bindings):
@@ -175,8 +177,8 @@ class Apply(Expression):
     return self.pred_expr.repr_closed()+' '+self.arg_expr.repr_closed()
   def repr_closed(self):
     return '('+repr(self)+')'
-  def subst(self, bindings):
-    return Apply(self.pred_expr.subst(bindings), self.arg_expr.subst(bindings))
+  def subst(self, bindings, subst_vars=False):
+    return Apply(self.pred_expr.subst(bindings, subst_vars), self.arg_expr.subst(bindings, subst_vars))
   def collect_var_ids(self, var_ids):
     self.pred_expr.collect_var_ids(var_ids)
     self.arg_expr.collect_var_ids(var_ids)
@@ -217,11 +219,11 @@ class Query(Expression):
     self.val_constraint = val_constraint
   def __repr__(self):
     return '['+repr(self.val_pattern)+': '+repr(self.val_constraint)+']'
-  def subst(self, bindings):
+  def subst(self, bindings, subst_vars=False):
     shadow = Shadow(bindings)
     self.val_pattern.collect_var_ids(shadow.shadowed)
     self.val_constraint.collect_var_ids(shadow.shadowed)
-    return Query(self.val_pattern.subst(shadow), self.val_constraint.subst(shadow))
+    return Query(self.val_pattern.subst(shadow, subst_vars), self.val_constraint.subst(shadow, subst_vars))
   def evaluate(self, bindings, world):
     evald = self.val_constraint.evaluate(bindings, world)
     check_res = world.check(evald)
@@ -232,3 +234,23 @@ class Query(Expression):
     return False
   def __eq__(self, other):
     return False
+
+class With(Expression):
+  def __init__(self, with_expr, body):
+    self.with_expr = with_expr
+    self.body = body
+  def __repr__(self):
+    return '{'+repr(self.with_expr)+'} '+repr(self.body)
+  def repr_closed(self):
+    return '('+repr(self)+')'
+  def subst(self, bindings, subst_vars=False):
+    return With(self.with_expr.subst(bindings, subst_vars), self.body.subst(bindings, subst_vars))
+  def match(self, other, bindings):
+    return isinstance(other, With) and self.with_expr.match(other.with_expr, bindings) and self.body.match(other.body, bindings)
+  def __eq__(self, other):
+    return isinstance(other, With) and self.with_expr == other.with_expr and self.body == other.body
+  def evaluate(self, bindings, world):
+    evald = self.with_expr.evaluate(bindings)
+    # TODO: add evald to scoped world
+    scoped_world = world
+    return self.body.evaluate(bindings, scoped_world)
