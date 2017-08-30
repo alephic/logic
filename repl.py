@@ -1,5 +1,6 @@
 
 from parse import *
+import logic
 import readline
 
 def repl():
@@ -21,7 +22,7 @@ def repl():
       p = parse(i)
       if p:
         try:
-          print(p.evaluate(bindings, None))
+          print(p.evaluate(bindings, logic.EMPTY))
         except LogicError as e:
           print(e.message)
       else:

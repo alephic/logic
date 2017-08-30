@@ -23,7 +23,7 @@ class Shadow:
 
 class World:
   def __init__(self, facts=[]):
-    self.
+    pass
   def check(self, claim):
     return False
 
@@ -98,7 +98,7 @@ class Sym(Expression):
   def __repr__(self):
     return str(self.sym_id)
   def subst(self, bindings, subst_vars=False):
-    return bindings[self.sym_id] if (self.sym_id in bindings) and subst_vars else self
+    return bindings[self.sym_id] if (self.sym_id in bindings) and not subst_vars else self
   def collect_var_ids(self, var_ids):
     pass
   def match(self, other, bindings):
@@ -135,7 +135,7 @@ class Lambda(Expression):
     self.arg_pattern.collect_var_ids(shadow.shadowed)
     if self.arg_constraint:
       self.arg_constraint.collect_var_ids(shadow.shadowed)
-    return Lambda(self.arg_pattern.subst(shadow, subst_vars), self.arg_constraint.subst(shadow, subst_vars), self.body.subst(shadow, subst_vars))
+    return Lambda(self.arg_pattern.subst(shadow, subst_vars), self.arg_constraint.subst(shadow, subst_vars) if self.arg_constraint else None, self.body.subst(shadow, subst_vars))
   def collect_var_ids(self, var_ids):
     pass
   def match(self, other, bindings):
@@ -201,6 +201,8 @@ class Query(Expression):
   def evaluate(self, bindings, world):
     evald = self.val_constraint.evaluate(bindings, world)
     check_res = world.check(evald)
+    if not check_res:
+      raise LogicError("No candidates found for %s in current environment\n  in: %s" % (repr(self.val_pattern), repr(self)))
     scope = Scope(bindings)
     evald.match(check_res, scope)
     return self.val_pattern.evaluate(scope, world)
