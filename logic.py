@@ -275,7 +275,7 @@ class With(Expression):
     return hash(With) ^ hash(self.with_expr) ^ hash(self.body)
   def evaluate(self, bindings, world):
     evald = self.with_expr.evaluate(bindings, world)
-    scoped_world = ScopedWord(world)
+    scoped_world = ScopedWorld(world)
     scoped_world.add_fact(evald)
     return self.body.evaluate(bindings, scoped_world)
   def collect_ref_ids(self, ref_ids):
