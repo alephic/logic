@@ -5,6 +5,7 @@ import readline
 
 def repl():
   bindings = {}
+  world = World()
   while True:
     i = input('> ')
     if len(i) > 0:
@@ -15,15 +16,23 @@ def repl():
         parse_re(SPACES, t)
         sym = parse_re(SYM, t)
         parse_re(SPACES, t)
-        expr = parse_expr(t, bindings)
+        expr = parse_expr(t, {}).evaluate({}, world)
         if expr:
           bindings[sym] = expr
           print('%s := %s' % (sym, repr(expr)))
         continue
+      if i.startswith(':decl'):
+        t = Tracker(i, pos=5)
+        parse_re(SPACES, t)
+        expr = parse_expr(t, {}).evaluate({}, world)
+        if expr:
+          world.add_fact(expr)
+          print(repr(expr))
+        continue
       p = parse(i, bindings)
       if p:
         try:
-          print(p.evaluate(bindings, logic.EMPTY))
+          print(p.evaluate({}, world))
         except LogicError as e:
           print(e.message)
       else:
