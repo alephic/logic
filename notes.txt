@@ -22,6 +22,6 @@ Declare:
 
 Query:
 
-  [$arg: constraint]
-  [$x: c x]
+  [val: constraint]
+  [x: c $x]
 
