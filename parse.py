@@ -10,11 +10,11 @@ LBRACE = re.compile(r'\{')
 RBRACE = re.compile(r'\}')
 LANGLE = re.compile(r'<')
 RANGLE = re.compile(r'>')
-SYM = re.compile(r'[^()\[\]\$@\s\{\}<>:]+')
-VAR = re.compile(r'\$')
-PATTERN = re.compile(r'@')
+SYM = re.compile(r'[^()\[\]\$@\s\{\}<>:;,]+')
 SPACES = re.compile(r'\s*')
 COLON = re.compile(r':')
+COMMA = re.compile(r',')
+SEMICOLON = re.compile(r';')
 
 class Tracker:
   def __init__(self, s, pos=0):
@@ -34,8 +34,6 @@ def parse_sym(t):
   if not s:
     t.pos = reset
     return None
-  if s == '_':
-    return Gap()
   return Sym(s)
 
 def parse_apply(t):
@@ -56,7 +54,7 @@ def parse_lambda(t):
   reset = t.pos
   if parse_re(LANGLE, t):
     parse_re(SPACES, t)
-    m1 = parse_expr(t)
+    m1 = parse_sym(t)
     if m1:
       parse_re(SPACES, t)
       c = parse_re(COLON, t)
@@ -71,33 +69,15 @@ def parse_lambda(t):
         parse_re(SPACES, t)
         m2 = parse_expr(t)
         if m2:
-          return Lambda(m1, constraint, m2)
+          return Lambda(m1.sym_id, constraint, m2)
   t.pos = reset
   return None
-
-def parse_var(t):
-  reset = t.pos
-  if parse_re(VAR, t):
-    m = parse_re(SYM, t)
-    if m:
-      if parse_re(PATTERN, t):
-        m2 = parse_expr(t)
-        if m2:
-          return PatternVar(m, m2)
-        else:
-          t.pos = reset
-          return None
-      else:
-        return Var(m)
-  else:
-    t.pos = reset
-    return None
 
 def parse_query(t):
   reset = t.pos
   if parse_re(LBRACK, t):
     parse_re(SPACES, t)
-    m = parse_expr(t)
+    m = parse_sym(t)
     if m:
       parse_re(SPACES, t)
       if parse_re(COLON, t):
@@ -106,7 +86,7 @@ def parse_query(t):
         if m2:
           parse_re(SPACES, t)
           if parse_re(RBRACK, t):
-            return Query(m, m2)
+            return Query(m.sym_id, m2)
   t.pos = reset
   return None
 
@@ -129,7 +109,7 @@ def parse_expr(t):
   return parse_apply(t) or parse_expr_not_apply(t)
 
 def parse_expr_not_apply(t):
-  return parse_paren_expr(t) or parse_lambda(t) or parse_query(t) or parse_with(t) or parse_var(t) or parse_sym(t)
+  return parse_paren_expr(t) or parse_lambda(t) or parse_query(t) or parse_with(t) or parse_sym(t)
 
 def parse_paren_expr(t):
   reset = t.pos

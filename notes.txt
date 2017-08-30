@@ -9,11 +9,14 @@ Symbolic constants behave as constructors when applied
 Lambdas behave as functions when applied
 Lambda:
 
-  <$arg> body
-  <$x> y
-  <$arg: constraint> body
-  <$x: c x y> z
-  <$x> <$y> f x y
+  <arg> body
+  <x> y
+  <arg: constraint> body
+  <x> <y> f x y
+  <arg; corollary: constraint> body
+  <x; y: c x y> y
+  <arg; corollary1, corollary2: constraint> body
+  <x; y, z: c x y z> y
 
 Declare:
 
@@ -22,6 +25,6 @@ Declare:
 
 Query:
 
-  [val: constraint]
-  [x: c $x]
+  [name: constraint]
+  [x: c x]
 
