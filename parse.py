@@ -36,20 +36,6 @@ def parse_sym(t):
     return None
   return Sym(s)
 
-def parse_apply(t):
-  reset = t.pos
-  parse_re(SPACES, t)
-  m1 = parse_expr_not_apply(t)
-  if m1:
-    parse_re(SPACES, t)
-    m2 = parse_expr(t)
-    if m2:
-      if isinstance(m2, Apply):
-        return Apply(Apply(m1, m2.pred_expr), m2.arg_expr)
-      return Apply(m1, m2)
-  t.pos = reset
-  return None
-
 def parse_ids(t):
   reset = t.pos
   s = parse_re(SYM, t)
@@ -130,7 +116,18 @@ def parse_with(t):
   return None
 
 def parse_expr(t):
-  return parse_apply(t) or parse_expr_not_apply(t)
+  reset = t.pos
+  curr = parse_expr_not_apply(t)
+  if curr:
+    while True:
+      parse_re(SPACES, t)
+      new = parse_expr_not_apply(t)
+      if new:
+        curr = Apply(curr, new)
+      else:
+        return curr
+  t.pos = reset
+  return None
 
 def parse_expr_not_apply(t):
   return parse_paren_expr(t) or parse_lambda(t) or parse_query(t) or parse_with(t) or parse_sym(t)

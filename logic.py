@@ -80,7 +80,7 @@ class Lambda(Expression):
     shadow.shadowed[self.arg_id] = True
     for corollary_id in self.corollary_ids:
       shadow.shadowed[corollary_id] = True
-    return Lambda(self.arg_id, self.arg_constraint.subst(shadow) if self.arg_constraint else None, self.body.subst(shadow))
+    return Lambda(self.arg_id, self.body.subst(shadow), arg_constraint=self.arg_constraint.subst(shadow) if self.arg_constraint else None, corollary_ids=self.corollary_ids)
   def match(self, other, bindings):
     return False
   def __eq__(self, other):
@@ -117,7 +117,7 @@ class Apply(Expression):
     for corollary_id in pred_val.corollary_ids:
       shadow.shadowed[corollary_id] = True
     if pred_val.arg_constraint:
-      evald = pred_val.arg_constraint.evaluate(scope)
+      evald = pred_val.arg_constraint.evaluate(scope, world)
       check_res = world.check(evald)
       if check_res:
         evald.match(check_res, scope)
@@ -139,7 +139,7 @@ class Query(Expression):
     shadow.shadowed[self.val_id] = True
     for corollary_id in self.corollary_ids:
       shadow.shadowed[corollary_id] = True
-    return Query(self.val_id, self.val_constraint.subst(shadow))
+    return Query(self.val_id, self.val_constraint.subst(shadow), corollary_ids=self.corollary_ids)
   def evaluate(self, bindings, world):
     shadow = Shadow(bindings)
     shadow.shadowed[self.val_id] = True
@@ -172,7 +172,7 @@ class With(Expression):
   def __eq__(self, other):
     return isinstance(other, With) and self.with_expr == other.with_expr and self.body == other.body
   def evaluate(self, bindings, world):
-    evald = self.with_expr.evaluate(bindings)
+    evald = self.with_expr.evaluate(bindings, world)
     # TODO: add evald to scoped world
     scoped_world = world
     return self.body.evaluate(bindings, scoped_world)
