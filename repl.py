@@ -10,16 +10,17 @@ def repl():
     if len(i) > 0:
       if i.startswith(':q'):
         return
-      if i.startswith('#'):
-        t = Tracker(i, pos=1)
+      if i.startswith('def'):
+        t = Tracker(i, pos=3)
+        parse_re(SPACES, t)
         sym = parse_re(SYM, t)
         parse_re(SPACES, t)
-        expr = parse_expr(t)
+        expr = parse_expr(t, bindings)
         if expr:
           bindings[sym] = expr
-          print('Definition added for '+sym)
+          print('%s := %s' % (sym, repr(expr)))
         continue
-      p = parse(i)
+      p = parse(i, bindings)
       if p:
         try:
           print(p.evaluate(bindings, logic.EMPTY))

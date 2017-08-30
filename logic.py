@@ -52,11 +52,26 @@ class Sym(Expression):
   def __repr__(self):
     return str(self.sym_id)
   def subst(self, bindings):
-    return bindings[self.sym_id] if self.sym_id in bindings else self
+    return self
   def match(self, other, bindings):
     return self.__eq__(other)
   def __eq__(self, other):
     return isinstance(other, Sym) and self.sym_id == other.sym_id
+
+class Ref(Expression):
+  def __init__(self, sym_id):
+    self.sym_id = sym_id
+  def __repr__(self):
+    return str(self.sym_id)
+  def subst(self, bindings):
+    return bindings[self.sym_id] if self.sym_id in bindings else self
+  def match(self, other, bindings):
+    if self.sym_id in bindings:
+      return bindings[self.sym_id] == other
+    bindings[self.sym_id] = other
+    return True
+  def __eq__(self, other):
+    return isinstance(other, Ref) and self.sym_id == other.sym_id
 
 def list_ids(primary, corollaries):
   if len(corollaries) == 0:

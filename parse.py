@@ -28,12 +28,14 @@ def parse_re(r, t):
     return m.group(0)
   return None
 
-def parse_sym(t):
+def parse_sym(t, ref_ids):
   reset = t.pos
   s = parse_re(SYM, t)
   if not s:
     t.pos = reset
     return None
+  if s in ref_ids:
+    return Ref(s)
   return Sym(s)
 
 def parse_ids(t):
@@ -60,39 +62,43 @@ def parse_ids(t):
         return None
   return ids
 
-def parse_lambda(t):
+def parse_lambda(t, ref_ids):
   reset = t.pos
   if parse_re(LANGLE, t):
     parse_re(SPACES, t)
     m1 = parse_ids(t)
     if m1:
+      ref_ids = Scope(ref_ids)
+      ref_ids.update(((rid, True) for rid in m1))
       parse_re(SPACES, t)
       c = parse_re(COLON, t)
       parse_re(SPACES, t)
       constraint = None
       if c:
-        constraint = parse_expr(t)
+        constraint = parse_expr(t, ref_ids)
         if not constraint:
           t.pos = reset
           return None
       if parse_re(RANGLE, t):
         parse_re(SPACES, t)
-        m2 = parse_expr(t)
+        m2 = parse_expr(t, ref_ids)
         if m2:
           return Lambda(m1[0], m2, arg_constraint=constraint, corollary_ids=m1[1:])
   t.pos = reset
   return None
 
-def parse_query(t):
+def parse_query(t, ref_ids):
   reset = t.pos
   if parse_re(LBRACK, t):
     parse_re(SPACES, t)
     m = parse_ids(t)
     if m:
+      ref_ids = Scope(ref_ids)
+      ref_ids.update(((rid, True) for rid in m))
       parse_re(SPACES, t)
       if parse_re(COLON, t):
         parse_re(SPACES, t)
-        m2 = parse_expr(t)
+        m2 = parse_expr(t, ref_ids)
         if m2:
           parse_re(SPACES, t)
           if parse_re(RBRACK, t):
@@ -100,28 +106,28 @@ def parse_query(t):
   t.pos = reset
   return None
 
-def parse_with(t):
+def parse_with(t, ref_ids):
   reset = t.pos
   if parse_re(LBRACE, t):
     parse_re(SPACES, t)
-    m = parse_expr(t)
+    m = parse_expr(t, ref_ids)
     if m:
       parse_re(SPACES, t)
       if parse_re(RBRACE, t):
         parse_re(SPACES, t)
-        m2 = parse_expr(t)
+        m2 = parse_expr(t, ref_ids)
         if m2:
           return With(m, m2)
   t.pos = reset
   return None
 
-def parse_expr(t):
+def parse_expr(t, ref_ids):
   reset = t.pos
-  curr = parse_expr_not_apply(t)
+  curr = parse_expr_not_apply(t, ref_ids)
   if curr:
     while True:
       parse_re(SPACES, t)
-      new = parse_expr_not_apply(t)
+      new = parse_expr_not_apply(t, ref_ids)
       if new:
         curr = Apply(curr, new)
       else:
@@ -129,14 +135,14 @@ def parse_expr(t):
   t.pos = reset
   return None
 
-def parse_expr_not_apply(t):
-  return parse_paren_expr(t) or parse_lambda(t) or parse_query(t) or parse_with(t) or parse_sym(t)
+def parse_expr_not_apply(t, ref_ids):
+  return parse_paren_expr(t, ref_ids) or parse_lambda(t, ref_ids) or parse_query(t, ref_ids) or parse_with(t, ref_ids) or parse_sym(t, ref_ids)
 
-def parse_paren_expr(t):
+def parse_paren_expr(t, ref_ids):
   reset = t.pos
   if parse_re(LPAREN, t):
     parse_re(SPACES, t)
-    m = parse_expr(t)
+    m = parse_expr(t, ref_ids)
     if m:
       parse_re(SPACES, t)
       if parse_re(RPAREN, t):
@@ -144,8 +150,8 @@ def parse_paren_expr(t):
   t.pos = reset
   return None
 
-def parse(s):
-  return parse_expr(Tracker(s))
+def parse(s, ref_ids):
+  return parse_expr(Tracker(s), ref_ids)
 
 def evaluate(s):
-  return parse(s).evaluate({}, None)
+  return parse(s).evaluate({}, EMPTY)
