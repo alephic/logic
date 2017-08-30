@@ -10,8 +10,8 @@ def repl():
     if len(i) > 0:
       if i.startswith(':q'):
         return
-      if i.startswith('def'):
-        t = Tracker(i, pos=3)
+      if i.startswith(':def'):
+        t = Tracker(i, pos=4)
         parse_re(SPACES, t)
         sym = parse_re(SYM, t)
         parse_re(SPACES, t)
