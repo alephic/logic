@@ -27,4 +27,6 @@ Query:
 
   [name: constraint]
   [x: c x]
+  [name; corollary: constraint]
+  [name; corollary1, corollary2: constraint]
 
