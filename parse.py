@@ -50,11 +50,35 @@ def parse_apply(t):
   t.pos = reset
   return None
 
+def parse_ids(t):
+  reset = t.pos
+  s = parse_re(SYM, t)
+  if not s:
+    t.pos = reset
+    return None
+  parse_re(SPACES, t)
+  ids = [s]
+  if parse_re(SEMICOLON, t):
+    while True:
+      parse_re(SPACES, t)
+      c = parse_re(SYM, t)
+      if c:
+        ids.append(c)
+        parse_re(SPACES, t)
+        if parse_re(COMMA, t):
+          continue
+        else:
+          break
+      else:
+        t.pos = reset
+        return None
+  return ids
+
 def parse_lambda(t):
   reset = t.pos
   if parse_re(LANGLE, t):
     parse_re(SPACES, t)
-    m1 = parse_sym(t)
+    m1 = parse_ids(t)
     if m1:
       parse_re(SPACES, t)
       c = parse_re(COLON, t)
@@ -69,7 +93,7 @@ def parse_lambda(t):
         parse_re(SPACES, t)
         m2 = parse_expr(t)
         if m2:
-          return Lambda(m1.sym_id, constraint, m2)
+          return Lambda(m1[0], m2, arg_constraint=constraint, corollary_ids=m1[1:])
   t.pos = reset
   return None
 
@@ -77,7 +101,7 @@ def parse_query(t):
   reset = t.pos
   if parse_re(LBRACK, t):
     parse_re(SPACES, t)
-    m = parse_sym(t)
+    m = parse_ids(t)
     if m:
       parse_re(SPACES, t)
       if parse_re(COLON, t):
@@ -86,7 +110,7 @@ def parse_query(t):
         if m2:
           parse_re(SPACES, t)
           if parse_re(RBRACK, t):
-            return Query(m.sym_id, m2)
+            return Query(m[0], m2, corollary_ids=m[1:])
   t.pos = reset
   return None
 

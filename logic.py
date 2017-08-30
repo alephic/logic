@@ -148,7 +148,7 @@ class Query(Expression):
     evald = self.val_constraint.evaluate(shadow, world)
     check_res = world.check(evald)
     if not check_res:
-      raise LogicError("No candidates found for %s in current environment\n  in: %s" % (repr(self.val_pattern), repr(self)))
+      raise LogicError("No candidates found for %s in current environment\n  in: %s" % (repr(self.val_id), repr(self)))
     scope = Scope(shadow)
     evald.match(check_res, scope)
     return scope[self.val_id]
