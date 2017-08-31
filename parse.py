@@ -38,71 +38,35 @@ def parse_sym(t, ref_ids):
     return Ref(s)
   return Sym(s)
 
-def parse_ids(t):
-  reset = t.pos
-  s = parse_re(SYM, t)
-  if not s:
-    t.pos = reset
-    return None
-  parse_re(SPACES, t)
-  ids = [s]
-  if parse_re(SEMICOLON, t):
-    while True:
-      parse_re(SPACES, t)
-      c = parse_re(SYM, t)
-      if c:
-        ids.append(c)
-        parse_re(SPACES, t)
-        if parse_re(COMMA, t):
-          continue
-        else:
-          break
-      else:
-        t.pos = reset
-        return None
-  return ids
-
 def parse_lambda(t, ref_ids):
   reset = t.pos
   if parse_re(LANGLE, t):
     parse_re(SPACES, t)
-    m1 = parse_ids(t)
+    m1 = parse_re(SYM, t)
     if m1:
       ref_ids = Scope(ref_ids)
-      ref_ids.update(((rid, True) for rid in m1))
+      ref_ids[m1] = True
       parse_re(SPACES, t)
-      c = parse_re(COLON, t)
-      parse_re(SPACES, t)
-      constraint = None
-      if c:
-        constraint = parse_expr(t, ref_ids)
-        if not constraint:
-          t.pos = reset
-          return None
       if parse_re(RANGLE, t):
         parse_re(SPACES, t)
         m2 = parse_expr(t, ref_ids)
         if m2:
-          return Lambda(m1[0], m2, arg_constraint=constraint, corollary_ids=m1[1:])
+          return Lambda(m1, m2)
   t.pos = reset
   return None
 
-def parse_query(t, ref_ids):
+def parse_constraint(t, ref_ids):
   reset = t.pos
   if parse_re(LBRACK, t):
     parse_re(SPACES, t)
-    m = parse_ids(t)
+    m = parse_expr(t, ref_ids)
     if m:
-      ref_ids = Scope(ref_ids)
-      ref_ids.update(((rid, True) for rid in m))
       parse_re(SPACES, t)
-      if parse_re(COLON, t):
+      if parse_re(RBRACK, t):
         parse_re(SPACES, t)
         m2 = parse_expr(t, ref_ids)
         if m2:
-          parse_re(SPACES, t)
-          if parse_re(RBRACK, t):
-            return Query(m[0], m2, corollary_ids=m[1:])
+          return Constraint(m, m2)
   t.pos = reset
   return None
 
@@ -136,7 +100,7 @@ def parse_expr(t, ref_ids):
   return None
 
 def parse_expr_not_apply(t, ref_ids):
-  return parse_paren_expr(t, ref_ids) or parse_lambda(t, ref_ids) or parse_query(t, ref_ids) or parse_with(t, ref_ids) or parse_sym(t, ref_ids)
+  return parse_paren_expr(t, ref_ids) or parse_lambda(t, ref_ids) or parse_constraint(t, ref_ids) or parse_with(t, ref_ids) or parse_sym(t, ref_ids)
 
 def parse_paren_expr(t, ref_ids):
   reset = t.pos

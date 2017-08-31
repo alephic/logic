@@ -129,29 +129,18 @@ class Ref(Expression):
   def collect_ref_ids(self, ref_ids):
     ref_ids[self.ref_id] = True
 
-def list_ids(primary, corollaries):
-  if len(corollaries) == 0:
-    return str(primary)
-  return str(primary) + '; '+', '.join(map(str, corollaries))
-
 class Lambda(Expression):
-  def __init__(self, arg_id, body, arg_constraint=None, corollary_ids=[]):
+  def __init__(self, arg_id, body):
     self.arg_id = arg_id
     self.body = body
-    self.arg_constraint = arg_constraint
-    self.corollary_ids = corollary_ids
   def __repr__(self):
-    if self.arg_constraint:
-      return '<'+list_ids(self.arg_id, self.corollary_ids)+': '+repr(self.arg_constraint)+'> '+repr(self.body)
     return '<'+str(self.arg_id)+'> '+repr(self.body)
   def repr_closed(self):
     return '('+repr(self)+')'
   def subst(self, bindings):
     shadow = Shadow(bindings)
     shadow.shadowed[self.arg_id] = True
-    for corollary_id in self.corollary_ids:
-      shadow.shadowed[corollary_id] = True
-    return Lambda(self.arg_id, self.body.subst(shadow), arg_constraint=self.arg_constraint.subst(shadow) if self.arg_constraint else None, corollary_ids=self.corollary_ids)
+    return Lambda(self.arg_id, self.body.subst(shadow))
   def match(self, other, bindings):
     return False
   def __eq__(self, other):
@@ -160,14 +149,9 @@ class Lambda(Expression):
     return id(self)
   def collect_ref_ids(self, ref_ids):
     inner = {}
-    if self.arg_constraint:
-      self.arg_constraint.collect_ref_ids(inner)
     self.body.collect_ref_ids(inner)
     if self.arg_id in inner:
       del inner[self.arg_id]
-    for corollary_id in self.corollary_ids:
-      if corollary_id in inner:
-        del inner[corollary_id]
     ref_ids.update(inner)
   
 class Apply(Expression):
@@ -186,7 +170,6 @@ class Apply(Expression):
     self.pred_expr.collect_var_ids(var_ids)
     self.arg_expr.collect_var_ids(var_ids)
   def match(self, other, bindings):
-    # return False
     return isinstance(other, Apply) \
       and self.pred_expr.match(other.pred_expr, bindings) \
       and self.arg_expr.match(other.arg_expr, bindings)
@@ -195,18 +178,8 @@ class Apply(Expression):
     arg_val = self.arg_expr.evaluate(bindings, world)
     if not isinstance(pred_val, Lambda):
       return Apply(pred_val, arg_val)
-    shadow = Shadow(bindings)
     scope = Scope(shadow)
     scope[pred_val.arg_id] = arg_val
-    for corollary_id in pred_val.corollary_ids:
-      shadow.shadowed[corollary_id] = True
-    if pred_val.arg_constraint:
-      evald = pred_val.arg_constraint.evaluate(scope, world)
-      check_res = world.find_match(evald)
-      if check_res:
-        evald.match(check_res, scope)
-        return pred_val.body.evaluate(scope, world)
-      raise LogicError("Failed to evaluate: Argument constraint %s not satisfied by argument value %s\n  in: %s" % (repr(pred_val.arg_constraint), repr(arg_val), repr(Apply(pred_val, arg_val))))
     return pred_val.body.evaluate(scope, world)
   def __eq__(self, other):
     return isinstance(other, Apply) and self.pred_expr == other.pred_expr and self.arg_expr == other.arg_expr
@@ -216,46 +189,29 @@ class Apply(Expression):
     self.pred_expr.collect_ref_ids(ref_ids)
     self.arg_expr.collect_ref_ids(ref_ids)
 
-class Query(Expression):
-  def __init__(self, val_id, val_constraint, corollary_ids=[]):
-    self.val_id = val_id
-    self.val_constraint = val_constraint
-    self.corollary_ids = corollary_ids
+class Constraint(Expression):
+  def __init__(self, constraint_expr, body):
+    self.constraint_expr = constraint_expr
+    self.body = body
   def __repr__(self):
-    return '['+list_ids(self.val_id, self.corollary_ids)+': '+repr(self.val_constraint)+']'
+    return '['+repr(self.constraint_expr)+'] '+repr(self.body)
+  def repr_closed(self):
+    return '('+repr(self)+')'
   def subst(self, bindings):
-    shadow = Shadow(bindings)
-    shadow.shadowed[self.val_id] = True
-    for corollary_id in self.corollary_ids:
-      shadow.shadowed[corollary_id] = True
-    return Query(self.val_id, self.val_constraint.subst(shadow), corollary_ids=self.corollary_ids)
-  def evaluate(self, bindings, world):
-    shadow = Shadow(bindings)
-    shadow.shadowed[self.val_id] = True
-    for corollary_id in self.corollary_ids:
-      shadow.shadowed[corollary_id] = True
-    evald = self.val_constraint.evaluate(shadow, world)
-    check_res = world.find_match(evald)
-    if not check_res:
-      raise LogicError("No candidates found for %s in current environment\n  in: %s" % (repr(self.val_id), repr(self)))
-    scope = Scope(shadow)
-    evald.match(check_res, scope)
-    return scope[self.val_id]
+    return Constraint(self.constraint_expr.subst(bindings), self.body.subst(bindings))
   def match(self, other, bindings):
-    return False
+    return isinstance(other, Constraint) and self.constraint_expr.match(other.constraint_expr, bindings) and self.body.match(other.body, bindings)
   def __eq__(self, other):
-    return self is other
+    return isinstance(other, Constraint) and self.constraint_expr == other.constraint_expr and self.body == other.body
   def __hash__(self):
-    return id(self)
+    return hash(Constraint) ^ hash(self.constraint_expr) ^ hash(self.body)
+  def evaluate(self, bindings, world):
+    evald = self.constraint_expr.evaluate(bindings, world)
+    # TODO: filter bindings before evaluating body
+    return self.body.evaluate(bindings, world)
   def collect_ref_ids(self, ref_ids):
-    inner = {}
-    self.val_constraint.collect_ref_ids(inner)
-    if self.val_id in inner:
-      del inner[self.val_id]
-    for corollary_id in self.corollary_ids:
-      if corollary_id in inner:
-        del inner[corollary_id]
-    ref_ids.update(inner)
+    self.constraint_expr.collect_ref_ids(ref_ids)
+    self.body.collect_ref_ids(ref_ids)
 
 class With(Expression):
   def __init__(self, with_expr, body):
