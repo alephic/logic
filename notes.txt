@@ -10,26 +10,35 @@ Lambdas behave as functions when applied
 Lambda:
 
   <arg> body
-  <x> y
-  <arg: constraint> body
-  <x> <y> f x y
-  <arg; corollary: constraint> body
-  <x; y: c x y> y
-  <arg; corollary1, corollary2: constraint> body
-  <x; y, z: c x y z> y
+  <x> x
 
-Declare:
+Declarations establish relations within their body
+Lambdas allow quantified variables in relations
+Declaration:
 
   {declaration} body
   {c x y} f x
+  {<x> c x a} f x
 
-Query:
+Constraints limit the codomain of their body by requiring
+a certain relation to hold on the variables in the domain
+Constraint:
 
-  [name: constraint]
-  [x: c x]
-  [name; corollary: constraint]
-  [name; corollary1, corollary2: constraint]
+  [constraint] body
 
-Fact table
+The wildcard value represents all possible values:
 
-  value at index -> sub-table or list of facts
+  *
+
+The arbitrary value represents an anonymous, unique value:
+
+  ?
+
+Using a lambda applied to an arbitrary value, it is possible to give anonymous relations
+locally-scoped names, as in this example, where an anonymous relation "a" is used to
+produce a disjoint value within the "or" function:
+
+> :def or <x> <y> (<a> {a x} {a y} (<z> [a z] z) *) ?
+> or a b
+a | b
+
