@@ -184,35 +184,41 @@ class Sym(Expression):
     pass
 
 class Ref(Expression):
-  def __init__(self, sym_id):
-    self.sym_id = sym_id
+  def __init__(self, ref_id):
+    self.ref_id = ref_id
   def __repr__(self):
-    return str(self.sym_id)
+    return str(self.ref_id)
   def subst(self, bindings):
-    if self.sym_id in bindings:
-      for b in bindings[self.sym_id]:
-        yield b
+    if self.ref_id in bindings:
+      for b in bindings[self.ref_id]:
+        if b == WILDCARD:
+           yield WildcardTrace(self.ref_id)
+        else:
+          yield b
     else:
       yield self
   def match(self, other, bindings):
-    if self.sym_id in bindings:
-      for binding in bindings[self.sym_id]:
+    if self.ref_id in bindings:
+      for binding in bindings[self.ref_id]:
         if binding == other:
-          if len(bindings[self.sym_id]) > 1:
-            bindings[self.sym_id] = {other}
-          return True
-        elif binding == WILDCARD:
-          bindings[self.sym_id] = {other}
           return True
       return False
-    bindings[self.sym_id] = {other}
+    bindings[self.ref_id] = {other}
     return True
   def __eq__(self, other):
-    return isinstance(other, Ref) and self.sym_id == other.sym_id
+    return isinstance(other, Ref) and self.ref_id == other.ref_id
   def __hash__(self):
-    return hash(self.sym_id)
+    return hash(Ref) ^ hash(self.ref_id)
   def collect_ref_ids(self, ref_ids):
     ref_ids[self.ref_id] = True
+
+class WildcardTrace(Ref):
+  def __repr__(self):
+    return '*'
+  def __eq__(self, other):
+    return isinstance(other, WildcardTrace) and self.ref_id == other.ref_id
+  def __hash__(self):
+    return hash(WildcardTrace) ^ hash(self.ref_id)
 
 class Lambda(Expression):
   def __init__(self, arg_id, body):
@@ -251,7 +257,7 @@ class Apply(Expression):
   def repr_closed(self):
     return '('+repr(self)+')'
   def subst(self, bindings):
-    a = list(self.pred_expr.subst(bindings))
+    a = list(self.arg_expr.subst(bindings))
     for p_v in self.pred_expr.subst(bindings):
       for a_v in a:
         yield Apply(p_v, a_v)
@@ -303,12 +309,16 @@ class Constraint(Expression):
     scope = Scope(bindings)
     for r_id in ref_ids:
       scope[r_id] = set()
+    has_match = False
     for evald_v in self.constraint_expr.evaluate(bindings, world):
       for m, s in world.get_matches(evald_v):
+        has_match = True
         for r_id, vs in squash(s).items():
           if r_id in ref_ids:
             scope[r_id].update(vs)
-    return self.body.evaluate(scope, world)
+    if has_match:
+      for b_v in self.body.evaluate(scope, world):
+        yield b_v
   def collect_ref_ids(self, ref_ids):
     self.constraint_expr.collect_ref_ids(ref_ids)
     self.body.collect_ref_ids(ref_ids)
@@ -322,7 +332,10 @@ class With(Expression):
   def repr_closed(self):
     return '('+repr(self)+')'
   def subst(self, bindings):
-    return With(self.with_expr.subst(bindings), self.body.subst(bindings))
+    b = list(self.body.subst(bindings))
+    for w_v in self.with_expr.subst(bindings):
+      for b_v in b:
+        yield With(w_v, b_v)
   def match(self, other, bindings):
     return isinstance(other, With) and self.with_expr.match(other.with_expr, bindings) and self.body.match(other.body, bindings)
   def __eq__(self, other):
@@ -332,7 +345,8 @@ class With(Expression):
   def evaluate(self, bindings, world):
     evald = self.with_expr.evaluate(bindings, world)
     scoped_world = ScopedWorld(world)
-    scoped_world.add_fact(evald)
+    for evald_v in evald:
+      scoped_world.add_fact(evald_v)
     return self.body.evaluate(bindings, scoped_world)
   def collect_ref_ids(self, ref_ids):
     self.with_expr.collect_ref_ids(ref_ids)
