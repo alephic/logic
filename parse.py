@@ -10,11 +10,10 @@ LBRACE = re.compile(r'\{')
 RBRACE = re.compile(r'\}')
 LANGLE = re.compile(r'<')
 RANGLE = re.compile(r'>')
-SYM = re.compile(r'[^()\[\]\$@\s\{\}<>:;,]+')
+SYM = re.compile(r'[^()\[\]\$@\s\{\}<>*?]+')
 SPACES = re.compile(r'\s*')
-COLON = re.compile(r':')
-COMMA = re.compile(r',')
-SEMICOLON = re.compile(r';')
+ASTERISK = re.compile(r'\*')
+QUESTION = re.compile(r'\?')
 
 class Tracker:
   def __init__(self, s, pos=0):
@@ -37,6 +36,14 @@ def parse_sym(t, ref_ids):
   if s in ref_ids:
     return Ref(s)
   return Sym(s)
+
+def parse_wildcard(t):
+  if parse_re(ASTERISK, t):
+    return WILDCARD
+
+def parse_arbitrary(t):
+  if parse_re(QUESTION, t):
+    return ARBITRARY
 
 def parse_lambda(t, ref_ids):
   reset = t.pos
@@ -100,7 +107,13 @@ def parse_expr(t, ref_ids):
   return None
 
 def parse_expr_not_apply(t, ref_ids):
-  return parse_paren_expr(t, ref_ids) or parse_lambda(t, ref_ids) or parse_constraint(t, ref_ids) or parse_with(t, ref_ids) or parse_sym(t, ref_ids)
+  return parse_paren_expr(t, ref_ids) \
+    or parse_lambda(t, ref_ids) \
+    or parse_constraint(t, ref_ids) \
+    or parse_with(t, ref_ids) \
+    or parse_sym(t, ref_ids) \
+    or parse_wildcard(t) \
+    or parse_arbitrary(t)
 
 def parse_paren_expr(t, ref_ids):
   reset = t.pos

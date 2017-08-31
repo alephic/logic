@@ -22,6 +22,19 @@ class Shadow:
   def __repr__(self):
     return repr(self.base_dict)+' - '+repr(self.shadowed)
 
+def squash(s):
+  if isinstance(s, Scope):
+    d = squash(s.base_dict)
+    d.update(s)
+    return d
+  if isinstance(s, Shadow):
+    d = squash(s.base_dict)
+    for k in s.shadowed:
+      if k in d:
+        del d[k]
+    return d
+  return dict(s)
+
 def flatten(expr):
   if isinstance(expr, Apply):
     for x in flatten(expr.pred_expr):
@@ -51,18 +64,18 @@ class Table:
       for leaf in self.leaves:
         s = Scope(bindings)
         if pattern_flat[i].match(leaf.positions[i], s):
-          yield leaf.expr
+          yield leaf.expr, s
     for x, b in self.branches.items():
       s = Scope(bindings)
       if pattern_flat[i].match(x, s):
-        for m in b.get_matches(pattern_flat, s, i=i+1):
-          yield m
+        for m, s in b.get_matches(pattern_flat, s, i=i+1):
+          yield m, s
 
 class World:
   def __init__(self):
     self.fact_table = Table()
-  def find_match(self, pattern):
-    return next(itertools.chain(self.fact_table.get_matches(tuple(flatten(pattern)), {}), [None]))
+  def get_matches(self, pattern):
+    return self.fact_table.get_matches(tuple(flatten(pattern)), {})
   def add_fact(self, expr):
     self.fact_table.add(Fact(expr))
 
@@ -70,10 +83,18 @@ class ScopedWorld(World):
   def __init__(self, base):
     super().__init__()
     self.base = base
-  def find_match(self, pattern):
-    return super().find_match(pattern) or self.base.find_match(pattern)
+  def _get_matches(self, pattern):
+    return super().get_matches(pattern)
+  def get_matches(self, pattern):
+    curr = self
+    while isinstance(curr, ScopedWorld):
+      for m, s in curr._get_matches(pattern):
+        yield m, s
+      curr = curr.base
+    for m, s in curr.get_matches(pattern):
+      yield m, s
 
-EMPTY = Table()
+EMPTY = World()
 
 class LogicError(Exception):
   def __init__(self, message):
@@ -93,6 +114,58 @@ class Expression:
   def collect_ref_ids(self, ref_ids):
     raise NotImplementedError()
 
+class Wildcard(Expression):
+  def subst(self, bindings):
+    yield self
+  def match(self, other, bindings):
+    return True # TODO: is this correct?
+  def __eq__(self, other):
+    return isinstance(other, Wildcard)
+  def __hash__(self):
+    return hash(Wildcard)
+  def __repr__(self):
+    return '*'
+  def collect_ref_ids(self, ref_ids):
+    pass
+
+WILDCARD = Wildcard()
+
+class ArbitraryVal(Expression):
+  counter = 0
+  def __init__(self):
+    self.num = ArbitraryVal.counter
+    ArbitraryVal.counter += 1
+  def subst(self, bindings):
+    yield self
+  def match(self, other, bindings):
+    return self.__eq__(other)
+  def __eq__(self, other):
+    return self is other
+  def __hash__(self):
+    return id(self)
+  def __repr__(self):
+    return '?'+str(self.num)
+  def collect_ref_ids(self, ref_ids):
+    pass
+
+class Arbitrary(Expression):
+  def subst(self, bindings):
+    yield self
+  def match(self, other, bindings):
+    return self.__eq__(other)
+  def evaluate(self, bindings, world):
+    yield ArbitraryVal()
+  def __eq__(self, other):
+    return isinstance(other, Arbitrary)
+  def __hash__(self):
+    return hash(Arbitrary)
+  def __repr__(self):
+    return '?'
+  def collect_ref_ids(self, ref_ids):
+    pass
+
+ARBITRARY = Arbitrary()
+
 # A symbol
 class Sym(Expression):
   def __init__(self, sym_id):
@@ -100,7 +173,7 @@ class Sym(Expression):
   def __repr__(self):
     return str(self.sym_id)
   def subst(self, bindings):
-    return self
+    yield self
   def match(self, other, bindings):
     return self.__eq__(other)
   def __eq__(self, other):
@@ -116,11 +189,23 @@ class Ref(Expression):
   def __repr__(self):
     return str(self.sym_id)
   def subst(self, bindings):
-    return bindings[self.sym_id] if self.sym_id in bindings else self
+    if self.sym_id in bindings:
+      for b in bindings[self.sym_id]:
+        yield b
+    else:
+      yield self
   def match(self, other, bindings):
     if self.sym_id in bindings:
-      return bindings[self.sym_id] == other
-    bindings[self.sym_id] = other
+      for binding in bindings[self.sym_id]:
+        if binding == other:
+          if len(bindings[self.sym_id]) > 1:
+            bindings[self.sym_id] = {other}
+          return True
+        elif binding == WILDCARD:
+          bindings[self.sym_id] = {other}
+          return True
+      return False
+    bindings[self.sym_id] = {other}
     return True
   def __eq__(self, other):
     return isinstance(other, Ref) and self.sym_id == other.sym_id
@@ -140,7 +225,8 @@ class Lambda(Expression):
   def subst(self, bindings):
     shadow = Shadow(bindings)
     shadow.shadowed[self.arg_id] = True
-    return Lambda(self.arg_id, self.body.subst(shadow))
+    for b in self.body.subst(shadow):
+      yield Lambda(self.arg_id, b)
   def match(self, other, bindings):
     return False
   def __eq__(self, other):
@@ -165,22 +251,25 @@ class Apply(Expression):
   def repr_closed(self):
     return '('+repr(self)+')'
   def subst(self, bindings):
-    return Apply(self.pred_expr.subst(bindings), self.arg_expr.subst(bindings))
-  def collect_var_ids(self, var_ids):
-    self.pred_expr.collect_var_ids(var_ids)
-    self.arg_expr.collect_var_ids(var_ids)
+    a = list(self.pred_expr.subst(bindings))
+    for p_v in self.pred_expr.subst(bindings):
+      for a_v in a:
+        yield Apply(p_v, a_v)
   def match(self, other, bindings):
     return isinstance(other, Apply) \
       and self.pred_expr.match(other.pred_expr, bindings) \
       and self.arg_expr.match(other.arg_expr, bindings)
   def evaluate(self, bindings, world):
-    pred_val = self.pred_expr.evaluate(bindings, world)
-    arg_val = self.arg_expr.evaluate(bindings, world)
-    if not isinstance(pred_val, Lambda):
-      return Apply(pred_val, arg_val)
-    scope = Scope(shadow)
-    scope[pred_val.arg_id] = arg_val
-    return pred_val.body.evaluate(scope, world)
+    a = set(self.arg_expr.evaluate(bindings, world))
+    for p_v in self.pred_expr.evaluate(bindings, world):
+      if not isinstance(p_v, Lambda):
+        for a_v in a:
+          yield Apply(p_v, a_v)
+      else:
+        scope = Scope(bindings)
+        scope[p_v.arg_id] = a
+        for b_v in p_v.body.evaluate(scope, world):
+          yield b_v
   def __eq__(self, other):
     return isinstance(other, Apply) and self.pred_expr == other.pred_expr and self.arg_expr == other.arg_expr
   def __hash__(self):
@@ -198,7 +287,10 @@ class Constraint(Expression):
   def repr_closed(self):
     return '('+repr(self)+')'
   def subst(self, bindings):
-    return Constraint(self.constraint_expr.subst(bindings), self.body.subst(bindings))
+    b = list(self.body.subst(bindings))
+    for c_v in self.constraint_expr.subst(bindings):
+      for b_v in b:
+        yield Constraint(c_v, b_v)
   def match(self, other, bindings):
     return isinstance(other, Constraint) and self.constraint_expr.match(other.constraint_expr, bindings) and self.body.match(other.body, bindings)
   def __eq__(self, other):
@@ -206,9 +298,17 @@ class Constraint(Expression):
   def __hash__(self):
     return hash(Constraint) ^ hash(self.constraint_expr) ^ hash(self.body)
   def evaluate(self, bindings, world):
-    evald = self.constraint_expr.evaluate(bindings, world)
-    # TODO: filter bindings before evaluating body
-    return self.body.evaluate(bindings, world)
+    ref_ids = {}
+    self.constraint_expr.collect_ref_ids(ref_ids)
+    scope = Scope(bindings)
+    for r_id in ref_ids:
+      scope[r_id] = set()
+    for evald_v in self.constraint_expr.evaluate(bindings, world):
+      for m, s in world.get_matches(evald_v):
+        for r_id, vs in squash(s).items():
+          if r_id in ref_ids:
+            scope[r_id].update(vs)
+    return self.body.evaluate(scope, world)
   def collect_ref_ids(self, ref_ids):
     self.constraint_expr.collect_ref_ids(ref_ids)
     self.body.collect_ref_ids(ref_ids)
