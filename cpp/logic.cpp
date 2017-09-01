@@ -31,15 +31,15 @@ namespace logic {
 
   class Scope {
   protected:
-    std::unordered_map<SymId, ValSet> data;
-    Scope const *base;
+    Scope *base;
   public:
+    std::unordered_map<SymId, ValSet> data;
     Scope() {}
-    Scope(const Scope *base): base(base) {}
+    Scope(Scope *base): base(base) {}
     void add(const SymId& k, ValSet& vs) {
       this->data[k] = vs;
     }
-    const ValSet &get(const SymId& k) const {
+    ValSet &get(const SymId& k) {
       if (this->data.count(k)) {
         return this->data.at(k);
       } else {
@@ -68,7 +68,7 @@ namespace logic {
   protected:
     std::unordered_set<SymId> shadowed;
   public:
-    Shadow(const Scope *base): Scope(base) {}
+    Shadow(Scope *base): Scope(base) {}
     void shadow(const SymId& k) {
       this->shadow.insert(k);
     }
@@ -158,8 +158,8 @@ namespace logic {
     ValPtrWeak self;
     virtual void repr(std::ostream&) const = 0;
     virtual void repr_closed(std::ostream& o) const {this->repr(o);}
-    virtual ValSet subst(const Scope&) const = 0;
-    virtual ValSet eval(const Scope& s, const World& w) const {return this->subst(s);}
+    virtual ValSet subst(Scope&) const = 0;
+    virtual ValSet eval(Scope& s, const World& w) const {return this->subst(s);}
     virtual bool match(const ValPtr& other, Scope&) const {return *this == *other;}
     virtual bool operator==(const Value&) const = 0;
     virtual std::size_t hash() const = 0;
@@ -178,13 +178,13 @@ namespace logic {
     const SymId sym_id;
   public:
     Sym(const SymId &sym_id): sym_id(sym_id) {}
-    void repr(std::ostream& o) const {
+    void repr(std::ostream& o) const override {
       o << this->sym_id;
     }
-    ValSet subst(const Scope& s) const {
+    ValSet subst(Scope& s) const override {
       return ValSet({this->self.lock()}, 1);
     }
-    bool operator==(const Value& other) const {
+    bool operator==(const Value& other) const override {
       if (const Sym *s = dynamic_cast<const Sym *>(&other)) {
         if (this->sym_id == s->sym_id) {
           return true;
@@ -192,7 +192,7 @@ namespace logic {
       }
       return false;
     }
-    std::size_t hash() const {
+    std::size_t hash() const override {
       return 85831957 ^ std::hash<std::string>{}(this->sym_id);
     }
   };
@@ -200,18 +200,18 @@ namespace logic {
   class Wildcard: public Value {
   public:
     Wildcard() {}
-    void repr(std::ostream& o) const {
+    void repr(std::ostream& o) const override {
       o << '*';
     }
-    ValSet subst(const Scope& s) const {
+    ValSet subst(Scope& s) const override {
       return ValSet({this->self.lock()}, 1);
     }
-    bool operator==(const Value& other) const {
+    bool operator==(const Value& other) const override {
       if (const Wildcard *s = dynamic_cast<const Wildcard *>(&other)) {
         return true;
       }
     }
-    std::size_t hash() const {
+    std::size_t hash() const override {
       return 12952153;
     }
   };
@@ -223,16 +223,16 @@ namespace logic {
     const SymId ref_id;
   public:
     WildcardTrace(const SymId& ref_id) : ref_id(ref_id) {}
-    void repr(std::ostream& o) const {
+    void repr(std::ostream& o) const override {
       o << '*';
     }
-    ValSet subst(const Scope& s) const {
+    ValSet subst(Scope& s) const override {
       if (s.has(this->ref_id)) {
         return s.get(this->ref_id);
       }
       return ValSet({this->self.lock()}, 1);
     }
-    bool match(const ValPtr& other, Scope& s) const {
+    bool match(const ValPtr& other, Scope& s) const override {
       if (s.has(this->ref_id)) {
         const ValSet& vs = s.get(this->ref_id);
         if (vs.count(other)) {
@@ -246,7 +246,7 @@ namespace logic {
         return true;
       }
     }
-    bool operator==(const Value& other) const {
+    bool operator==(const Value& other) const override {
       if (const WildcardTrace *s = dynamic_cast<const WildcardTrace *>(&other)) {
         if (this->ref_id == s->ref_id) {
           return true;
@@ -254,10 +254,10 @@ namespace logic {
       }
       return false;
     }
-    std::size_t hash() const {
+    std::size_t hash() const override {
       return 53815931 ^ std::hash<std::string>{}(this->ref_id);
     }
-    void collectRefIds(std::unordered_set<SymId>& s) const {
+    void collectRefIds(std::unordered_set<SymId>& s) const override {
       s.insert(this->ref_id);
     }
   };
@@ -270,9 +270,9 @@ namespace logic {
     void repr(std::ostream& o) const {
       o << this->ref_id;
     }
-    ValSet subst(const Scope& s) const {
+    ValSet subst(Scope& s) const override {
       if (s.has(this->ref_id)) {
-        const ValSet& vs = s.get(this->ref_id);
+        ValSet& vs = s.get(this->ref_id);
         if (vs.count(WILDCARD)) {
           ValSet vs2(vs);
           vs2.erase(WILDCARD);
@@ -283,7 +283,7 @@ namespace logic {
       }
       return ValSet({this->self.lock()}, 1);
     }
-    bool match(const ValPtr& other, Scope& s) const {
+    bool match(const ValPtr& other, Scope& s) const override {
       if (s.has(this->ref_id)) {
         const ValSet& vs = s.get(this->ref_id);
         if (vs.count(other)) {
@@ -297,7 +297,7 @@ namespace logic {
         return true;
       }
     }
-    bool operator==(const Value& other) const {
+    bool operator==(const Value& other) const override {
       if (const Ref *s = dynamic_cast<const Ref *>(&other)) {
         if (this->ref_id == s->ref_id) {
           return true;
@@ -305,10 +305,10 @@ namespace logic {
       }
       return false;
     }
-    std::size_t hash() const {
+    std::size_t hash() const override {
       return 128582195 ^ std::hash<std::string>{}(this->ref_id);
     }
-    void collectRefIds(std::unordered_set<SymId>& s) const {
+    void collectRefIds(std::unordered_set<SymId>& s) const override {
       s.insert(this->ref_id);
     }
   };
@@ -316,22 +316,22 @@ namespace logic {
   class Arbitrary: public Value {
   public:
     Arbitrary() {}
-    void repr(std::ostream& o) const {
+    void repr(std::ostream& o) const override {
       o << '?';
     }
-    ValSet subst(const Scope& s) const {
+    ValSet subst(Scope& s) const override {
       return ValSet({this->self.lock()}, 1);
     }
-    ValSet eval(const Scope& s, const World& w) const {
+    ValSet eval(Scope& s, const World& w) const override {
       return ValSet({bundle(new ArbitraryInstance())}, 1);
     }
-    bool operator==(const Value& other) const {
+    bool operator==(const Value& other) const override {
       if (const Arbitrary *s = dynamic_cast<const Arbitrary *>(&other)) {
         return true;
       }
       return false;
     }
-    std::size_t hash() const {
+    std::size_t hash() const override {
       return 95318557;
     }
   };
@@ -347,13 +347,13 @@ namespace logic {
       this->id = count;
       ++count;
     }
-    void repr(std::ostream& o) const {
+    void repr(std::ostream& o) const override {
       o << '?' << id;
     }
-    ValSet subst(const Scope& s) const {
+    ValSet subst(Scope& s) const override {
       return ValSet({this->self.lock()}, 1);
     }
-    bool operator==(const Value& other) const {
+    bool operator==(const Value& other) const override {
       if (const ArbitraryInstance *s = dynamic_cast<const ArbitraryInstance *>(&other)) {
         if (this->id == s->id) {
           return true;
@@ -361,7 +361,7 @@ namespace logic {
       }
       return false;
     }
-    std::size_t hash() const {
+    std::size_t hash() const override {
       return 998439321 ^ this->id;
     }
   };
@@ -377,16 +377,16 @@ namespace logic {
       this->id = count;
       ++count;
     }
-    void repr(std::ostream& o) const {
+    void repr(std::ostream& o) const override {
       o << '<' << this->arg_id << '>' << ' ';
       this->body->repr(o);
     }
-    void repr_closed(std::ostream& o) const {
+    void repr_closed(std::ostream& o) const override {
       o << '(';
       this->repr(o);
       o << ')';
     }
-    ValSet subst(const Scope& s) const {
+    ValSet subst(Scope& s) const override {
       Shadow sh = Shadow(&s);
       sh.shadow(this->arg_id);
       ValSet bodySubstdVals = this->body->subst(sh);
@@ -396,7 +396,7 @@ namespace logic {
       }
       return res;
     }
-    bool operator==(const Value& other) const {
+    bool operator==(const Value& other) const override {
       if (const Lambda *s = dynamic_cast<const Lambda *>(&other)) {
         if (this->id == s->id) {
           return true;
@@ -404,7 +404,7 @@ namespace logic {
       }
       return false;
     }
-    std::size_t hash() const {
+    std::size_t hash() const override {
       return 195218521 ^ this->id;
     }
   };
@@ -415,7 +415,7 @@ namespace logic {
     const ValPtr arg;
   public:
     Apply(const ValPtr& pred, const ValPtr& arg) : pred(pred), arg(arg) {}
-    void repr(std::ostream& o) const {
+    void repr(std::ostream& o) const override {
       if (const Apply *s = dynamic_cast<const Apply *>(&this->pred.get())) {
         this->pred->repr(o);
         o << ' ';
@@ -426,12 +426,12 @@ namespace logic {
         this->arg->repr_closed(o);
       }
     }
-    void repr_closed(std::ostream& o) const {
+    void repr_closed(std::ostream& o) const override {
       o << '(';
       this->repr(o);
       o << ')';
     }
-    ValSet subst(const Scope& s) const {
+    ValSet subst(Scope& s) const override {
       ValSet predVals = this->pred->subst(s);
       ValSet argVals = this->arg->subst(s);
       ValSet res(predVals.bucket_count()*argVals.bucket_count());
@@ -442,7 +442,7 @@ namespace logic {
       }
       return res;
     }
-    ValSet eval(const Scope& s, const World& w) {
+    ValSet eval(Scope& s, const World& w) const override {
       ValSet predVals = this->pred->eval(s, w);
       ValSet argVals = this->arg->eval(s, w);
       ValSet res(predVals.bucket_count()*argVals.bucket_count());
@@ -461,7 +461,7 @@ namespace logic {
       }
       return res;
     }
-    bool operator==(const Value& other) const {
+    bool operator==(const Value& other) const override {
       if (const Apply *s = dynamic_cast<const Apply *>(&other)) {
         if (*this->pred == *s->pred && *this->arg == *s->arg) {
           return true;
@@ -469,7 +469,7 @@ namespace logic {
       }
       return false;
     }
-    std::size_t hash() const {
+    std::size_t hash() const override {
       return 9858124 ^ this->pred->hash() ^ this->arg->hash();
     }
   };
@@ -480,18 +480,18 @@ namespace logic {
     const ValPtr body;
   public:
     Declare(const ValPtr& with, const ValPtr& body) : with(with), body(body) {}
-    void repr(std::ostream& o) const {
+    void repr(std::ostream& o) const override {
       o << '{';
       this->with->repr(o);
       o << '}' << ' ';
       this->body->repr(o);
     }
-    void repr_closed(std::ostream& o) const {
+    void repr_closed(std::ostream& o) const override {
       o << '(';
       this->repr(o);
       o << ')';
     }
-    ValSet subst(const Scope& s) const {
+    ValSet subst(Scope& s) const override {
       ValSet withVals = this->with->subst(s);
       ValSet bodyVals = this->body->subst(s);
       ValSet res(withVals.bucket_count()*bodyVals.bucket_count());
@@ -502,7 +502,7 @@ namespace logic {
       }
       return res;
     }
-    ValSet eval(const Scope& s, const World& w) {
+    ValSet eval(Scope& s, const World& w) const override {
       ValSet withVals = this->with->eval(s, w);
       World w2 = World(&w);
       for (ValPtr& withVal : withVals) {
@@ -510,7 +510,7 @@ namespace logic {
       }
       return this->body->eval(s, w2);
     }
-    bool operator==(const Value& other) const {
+    bool operator==(const Value& other) const override {
       if (const Declare *s = dynamic_cast<const Declare *>(&other)) {
         if (*this->with == *s->with && *this->body == *s->body) {
           return true;
@@ -518,7 +518,7 @@ namespace logic {
       }
       return false;
     }
-    std::size_t hash() const {
+    std::size_t hash() const override {
       return 2958125 ^ this->with->hash() ^ this->body->hash();
     }
   };
@@ -528,6 +528,66 @@ namespace logic {
     const ValPtr constraint;
     const ValPtr body;
   public:
-    Constrain(const ValPtr, const ValPtr);
+    Constrain(const ValPtr& constraint, const ValPtr& body) : constraint(constraint), body(body) {}
+    void repr(std::ostream& o) const override {
+      o << '[';
+      this->constraint->repr(o);
+      o << ']' << ' ';
+      this->body->repr(o);
+    }
+    void repr_closed(std::ostream& o) const override {
+      o << '(';
+      this->repr(o);
+      o << ')';
+    }
+    ValSet subst(Scope& s) const override {
+      ValSet constraintVals = this->constraint->subst(s);
+      ValSet bodyVals = this->body->subst(s);
+      ValSet res(constraintVals.bucket_count()*bodyVals.bucket_count());
+      for (ValPtr& constraintVal : constraintVals) {
+        for (ValPtr& bodyVal : bodyVals) {
+          res.insert(bundle(new Constrain(constraintVal, bodyVal)));
+        }
+      }
+      return res;
+    }
+    ValSet eval(Scope& s, const World& w) const override {
+      ValSet constraintVals = this->constraint->eval(s, w);
+      ValSet res;
+      Scope s2 = Scope(&s);
+      std::unordered_set<SymId> refIds;
+      this->constraint->collectRefIds(refIds);
+      for (const SymId& refId : refIds) {
+        ValSet empty;
+        s2.add(refId, empty);
+      }
+      bool has_match = false;
+      for (ValPtr& constraintVal : constraintVals) {
+        for (std::pair<ValPtr, Scope> match : w.get_matches(constraintVal)) {
+          has_match = true;
+          for (std::pair<SymId, ValSet> binding : match.second.data) {
+            if (refIds.count(binding.first)) {
+              for (ValPtr& boundVal : binding.second) {
+                s2.data[binding.first].insert(boundVal);
+              }
+            }
+          }
+        }
+      }
+      if (has_match) {
+        return this->body->eval(s2, w);
+      }
+    }
+    bool operator==(const Value& other) const override {
+      if (const Constrain *s = dynamic_cast<const Constrain *>(&other)) {
+        if (*this->constraint == *s->constraint && *this->body == *s->body) {
+          return true;
+        }
+      }
+      return false;
+    }
+    std::size_t hash() const override {
+      return 28148592 ^ this->constraint->hash() ^ this->body->hash();
+    }
   };
 }
