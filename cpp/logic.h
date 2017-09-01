@@ -160,7 +160,7 @@ namespace logic {
     virtual void repr_closed(std::ostream& o) const {this->repr(o);}
     virtual ValSet subst(const Scope&) const = 0;
     virtual ValSet eval(const Scope& s, const World& w) const {return this->subst(s);}
-    virtual bool match(const Value& other, Scope&) const {return *this == other;}
+    virtual bool match(const ValPtr& other, Scope&) const {return *this == *other;}
     virtual bool operator==(const Value&) const = 0;
     virtual std::size_t hash() const = 0;
     virtual void flatten(std::vector<ValPtr>& v) const {v.push_back(this->self.lock());}
@@ -231,6 +231,20 @@ namespace logic {
         return s.get(this->ref_id);
       }
       return ValSet({this->self.lock()}, 1);
+    }
+    bool match(const ValPtr& other, Scope& s) const {
+      if (s.has(this->ref_id)) {
+        const ValSet& vs = s.get(this->ref_id);
+        if (vs.count(other)) {
+          return true;
+        } else {
+          return false;
+        }
+      } else {
+        ValSet vs({other}, 1);
+        s.add(this->ref_id, vs);
+        return true;
+      }
     }
     bool operator==(const Value& other) const {
       if (const WildcardTrace *s = dynamic_cast<const WildcardTrace *>(&other)) {
@@ -436,9 +450,16 @@ namespace logic {
         if (const Lambda *l = dynamic_cast<const Lambda *>(predVal.get())) {
           Scope s2 = Scope(&s);
           s2.add(l->arg_id, argVals);
-
+          for (ValPtr& resVal : l->body->eval(s2, w)) {
+            res.insert(resVal);
+          }
+        } else {
+          for (ValPtr& argVal : argVals) {
+            res.insert(bundle(new Apply(predVal, argVal)));
+          }
         }
       }
+      return res;
     }
     bool operator==(const Value& other) const {
       if (const Apply *s = dynamic_cast<const Apply *>(&other)) {
@@ -458,7 +479,48 @@ namespace logic {
     const ValPtr with;
     const ValPtr body;
   public:
-    Declare(const ValPtr, const ValPtr);
+    Declare(const ValPtr& with, const ValPtr& body) : with(with), body(body) {}
+    void repr(std::ostream& o) const {
+      o << '{';
+      this->with->repr(o);
+      o << '}' << ' ';
+      this->body->repr(o);
+    }
+    void repr_closed(std::ostream& o) const {
+      o << '(';
+      this->repr(o);
+      o << ')';
+    }
+    ValSet subst(const Scope& s) const {
+      ValSet withVals = this->with->subst(s);
+      ValSet bodyVals = this->body->subst(s);
+      ValSet res(withVals.bucket_count()*bodyVals.bucket_count());
+      for (ValPtr& withVal : withVals) {
+        for (ValPtr& bodyVal : bodyVals) {
+          res.insert(bundle(new Declare(withVal, bodyVal)));
+        }
+      }
+      return res;
+    }
+    ValSet eval(const Scope& s, const World& w) {
+      ValSet withVals = this->with->eval(s, w);
+      World w2 = World(&w);
+      for (ValPtr& withVal : withVals) {
+        w2.add(withVal);
+      }
+      return this->body->eval(s, w2);
+    }
+    bool operator==(const Value& other) const {
+      if (const Declare *s = dynamic_cast<const Declare *>(&other)) {
+        if (*this->with == *s->with && *this->body == *s->body) {
+          return true;
+        }
+      }
+      return false;
+    }
+    std::size_t hash() const {
+      return 2958125 ^ this->with->hash() ^ this->body->hash();
+    }
   };
 
   class Constrain: public Value {
