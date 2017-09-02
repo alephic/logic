@@ -8,7 +8,26 @@
 
 namespace logic {
   
+  class Value;
+
   typedef std::shared_ptr<const Value> ValPtr;
+
+}
+
+namespace std {
+  
+  template<> struct equal_to<logic::ValPtr> {
+    constexpr bool operator()(const logic::ValPtr& v1, const logic::ValPtr& v2) const;
+  };
+
+  template<> struct hash<logic::ValPtr> {
+    std::size_t operator()(logic::ValPtr const& v) const;
+  };
+
+}
+
+namespace logic {
+  
   typedef std::weak_ptr<const Value> ValPtrWeak;
   
   typedef std::string SymId;
@@ -24,18 +43,18 @@ namespace logic {
     void add(const SymId& k, ValSet& vs);
     ValSet& get(const SymId& k);
     bool has(const SymId& k) const;
-    virtual void squash_(std::unordered_map<SymId, ValSet>& out) const;
-    Scope squash() const;
+    virtual void squash_(std::unordered_map<SymId, ValSet>& out);
+    Scope squash();
   };
 
-  class Shadow: protected Scope {
+  class Shadow : public Scope {
   protected:
     std::unordered_set<SymId> shadowed;
   public:
     Shadow(Scope *base);
     void shadow(const SymId& k);
     bool has(const SymId& k) const;
-    void squash_(std::unordered_map<SymId, ValSet>& out) const;
+    void squash_(std::unordered_map<SymId, ValSet>& out);
   };
 
   class ValTree {
@@ -60,7 +79,7 @@ namespace logic {
     void add(ValPtr& p);
     std::vector<std::pair<ValPtr, Scope>> get_matches(const ValPtr &p) const;
   };
-
+  
   class Value {
   public:
     ValPtrWeak self;
@@ -90,14 +109,13 @@ namespace logic {
   
   class Wildcard: public Value {
   public:
-    Wildcard() {}
+    static ValPtr INSTANCE;
+    Wildcard();
     void repr(std::ostream& o) const override;
     ValSet subst(Scope& s) const override;
     bool operator==(const Value& other) const override;
     std::size_t hash() const override;
   };
-
-  ValPtr WILDCARD;
 
   class WildcardTrace : public Value {
   private:
@@ -127,6 +145,7 @@ namespace logic {
 
   class Arbitrary: public Value {
   public:
+    static ValPtr INSTANCE;
     Arbitrary();
     void repr(std::ostream& o) const override;
     ValSet subst(Scope& s) const override;
@@ -134,8 +153,6 @@ namespace logic {
     bool operator==(const Value& other) const override;
     std::size_t hash() const override;
   };
-
-  ValPtr ARBITRARY;
 
   class ArbitraryInstance: public Value {
   private:
@@ -206,3 +223,5 @@ namespace logic {
     std::size_t hash() const override;
   };
 }
+
+int main(void);

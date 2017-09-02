@@ -1,18 +1,14 @@
 #include "logic.h"
 
 namespace std {
+  
+  constexpr bool equal_to<logic::ValPtr>::operator()(const logic::ValPtr& v1, const logic::ValPtr& v2) const {
+    return *v1 == *v2;
+  }
 
-  template<> struct hash<logic::ValPtr> {
-    std::size_t operator()(logic::ValPtr const& v) const {
-      return v->hash();
-    }
-  };
-
-  template<> struct equal_to<logic::ValPtr> {
-    constexpr bool operator()(const logic::ValPtr& v1, const logic::ValPtr& v2) const {
-      return *v1 == *v2;
-    }
-  };
+  std::size_t hash<logic::ValPtr>::operator()(logic::ValPtr const& v) const {
+    return v->hash();
+  }
 
 }
 
@@ -33,15 +29,15 @@ namespace logic {
   bool Scope::has(const SymId& k) const {
     return this->data.count(k) || this->base->has(k);
   }
-  void Scope::squash_(std::unordered_map<SymId, ValSet>& out) const {
+  void Scope::squash_(std::unordered_map<SymId, ValSet>& out) {
     if (this->base != nullptr) {
       this->base->squash_(out);
     }
-    for (std::pair<SymId, ValSet>& kv : this->data) {
+    for (const std::pair<const SymId, ValSet>& kv : this->data) {
       out[kv.first] = kv.second;
     }
   }
-  Scope Scope::squash() const {
+  Scope Scope::squash() {
     Scope s;
     this->squash_(s.data);
     return s;
@@ -49,19 +45,19 @@ namespace logic {
 
   Shadow::Shadow(Scope *base): Scope(base) {}
   void Shadow::shadow(const SymId& k) {
-    this->shadow.insert(k);
+    this->shadowed.insert(k);
   }
   bool Shadow::has(const SymId& k) const {
     return this->data.count(k) || ((!this->shadowed.count(k)) && this->base->has(k));
   }
-  void Shadow::squash_(std::unordered_map<SymId, ValSet>& out) const {
+  void Shadow::squash_(std::unordered_map<SymId, ValSet>& out) {
     if (this->base != nullptr) {
       this->base->squash_(out);
     }
     for (const SymId& k : this->shadowed) {
       out.erase(k);
     }
-    for (std::pair<SymId, ValSet>& kv : this->data) {
+    for (const std::pair<const SymId, ValSet>& kv : this->data) {
       out[kv.first] = kv.second;
     }
   }
@@ -86,14 +82,14 @@ namespace logic {
     if (it+1 == end) {
       for (const std::pair<const ValPtr, ValPtr>& leaf : this->leaves) {
         Scope s = Scope(&b);
-        if (leaf.first.match(*it, s)) {
+        if (leaf.first->match(*it, s)) {
           out.push_back(std::pair<ValPtr, Scope>{leaf.second, s.squash()});
         }
       }
     } else {
       for (const std::pair<const ValPtr, ValTree>& branch : this->branches) {
         Scope s = Scope(&b);
-        if (branch.first.match(*it, s)) {
+        if (branch.first->match(*it, s)) {
           branch.second.get_matches(it+1, end, s, out);
         }
       }
@@ -155,12 +151,13 @@ namespace logic {
     if (const Wildcard *s = dynamic_cast<const Wildcard *>(&other)) {
       return true;
     }
+    return false;
   }
   std::size_t Wildcard::hash() const {
     return 12952153;
   }
 
-  ValPtr WILDCARD = bundle(new Wildcard());
+  ValPtr Wildcard::INSTANCE(bundle(new Wildcard()));
 
   WildcardTrace::WildcardTrace(const SymId& ref_id) : ref_id(ref_id) {}
   void WildcardTrace::repr(std::ostream& o) const {
@@ -208,9 +205,9 @@ namespace logic {
   ValSet Ref::subst(Scope& s) const {
     if (s.has(this->ref_id)) {
       ValSet& vs = s.get(this->ref_id);
-      if (vs.count(WILDCARD)) {
+      if (vs.count(Wildcard::INSTANCE)) {
         ValSet vs2(vs);
-        vs2.erase(WILDCARD);
+        vs2.erase(Wildcard::INSTANCE);
         vs2.insert(bundle(new WildcardTrace(this->ref_id)));
         return vs2;
       }
@@ -267,8 +264,9 @@ namespace logic {
     return 95318557;
   }
 
-  Arbitrary ARBITRARY = bundle(new Arbitrary());
+  ValPtr Arbitrary::INSTANCE(bundle(new Arbitrary()));
 
+  std::size_t ArbitraryInstance::count(0);
   ArbitraryInstance::ArbitraryInstance() {
     this->id = count;
     ++count;
@@ -291,6 +289,7 @@ namespace logic {
     return 998439321 ^ this->id;
   }
 
+  std::size_t Lambda::count(0);
   Lambda::Lambda(const SymId& arg_id, const ValPtr& body) : arg_id(arg_id), body(body) {
     this->id = count;
     ++count;
@@ -309,7 +308,7 @@ namespace logic {
     sh.shadow(this->arg_id);
     ValSet bodySubstdVals = this->body->subst(sh);
     ValSet res(bodySubstdVals.bucket_count());
-    for (ValPtr& bodySubstd : bodySubstdVals) {
+    for (const ValPtr& bodySubstd : bodySubstdVals) {
       res.insert(bundle(new Lambda(this->arg_id, bodySubstd)));
     }
     return res;
@@ -328,7 +327,7 @@ namespace logic {
 
   Apply::Apply(const ValPtr& pred, const ValPtr& arg) : pred(pred), arg(arg) {}
   void Apply::repr(std::ostream& o) const {
-    if (const Apply *s = dynamic_cast<const Apply *>(&this->pred.get())) {
+    if (const Apply *s = dynamic_cast<const Apply *>(this->pred.get())) {
       this->pred->repr(o);
       o << ' ';
       this->arg->repr_closed(o);
@@ -347,8 +346,8 @@ namespace logic {
     ValSet predVals = this->pred->subst(s);
     ValSet argVals = this->arg->subst(s);
     ValSet res(predVals.bucket_count()*argVals.bucket_count());
-    for (ValPtr& predVal : predVals) {
-      for (ValPtr& argVal : argVals) {
+    for (const ValPtr& predVal : predVals) {
+      for (const ValPtr& argVal : argVals) {
         res.insert(bundle(new Apply(predVal, argVal)));
       }
     }
@@ -358,15 +357,15 @@ namespace logic {
     ValSet predVals = this->pred->eval(s, w);
     ValSet argVals = this->arg->eval(s, w);
     ValSet res(predVals.bucket_count()*argVals.bucket_count());
-    for (ValPtr& predVal : predVals) {
+    for (const ValPtr& predVal : predVals) {
       if (const Lambda *l = dynamic_cast<const Lambda *>(predVal.get())) {
         Scope s2 = Scope(&s);
         s2.add(l->arg_id, argVals);
-        for (ValPtr& resVal : l->body->eval(s2, w)) {
+        for (const ValPtr& resVal : l->body->eval(s2, w)) {
           res.insert(resVal);
         }
       } else {
-        for (ValPtr& argVal : argVals) {
+        for (const ValPtr& argVal : argVals) {
           res.insert(bundle(new Apply(predVal, argVal)));
         }
       }
@@ -401,8 +400,8 @@ namespace logic {
     ValSet withVals = this->with->subst(s);
     ValSet bodyVals = this->body->subst(s);
     ValSet res(withVals.bucket_count()*bodyVals.bucket_count());
-    for (ValPtr& withVal : withVals) {
-      for (ValPtr& bodyVal : bodyVals) {
+    for (const ValPtr& withVal : withVals) {
+      for (const ValPtr& bodyVal : bodyVals) {
         res.insert(bundle(new Declare(withVal, bodyVal)));
       }
     }
@@ -411,7 +410,7 @@ namespace logic {
   ValSet Declare::eval(Scope& s, const World& w) const {
     ValSet withVals = this->with->eval(s, w);
     World w2 = World(&w);
-    for (ValPtr& withVal : withVals) {
+    for (ValPtr withVal : withVals) {
       w2.add(withVal);
     }
     return this->body->eval(s, w2);
@@ -444,8 +443,8 @@ namespace logic {
     ValSet constraintVals = this->constraint->subst(s);
     ValSet bodyVals = this->body->subst(s);
     ValSet res(constraintVals.bucket_count()*bodyVals.bucket_count());
-    for (ValPtr& constraintVal : constraintVals) {
-      for (ValPtr& bodyVal : bodyVals) {
+    for (const ValPtr& constraintVal : constraintVals) {
+      for (const ValPtr& bodyVal : bodyVals) {
         res.insert(bundle(new Constrain(constraintVal, bodyVal)));
       }
     }
@@ -453,7 +452,6 @@ namespace logic {
   }
   ValSet Constrain::eval(Scope& s, const World& w) const {
     ValSet constraintVals = this->constraint->eval(s, w);
-    ValSet res;
     Scope s2 = Scope(&s);
     std::unordered_set<SymId> refIds;
     this->constraint->collectRefIds(refIds);
@@ -462,12 +460,12 @@ namespace logic {
       s2.add(refId, empty);
     }
     bool has_match = false;
-    for (ValPtr& constraintVal : constraintVals) {
+    for (const ValPtr& constraintVal : constraintVals) {
       for (std::pair<ValPtr, Scope> match : w.get_matches(constraintVal)) {
         has_match = true;
         for (std::pair<SymId, ValSet> binding : match.second.data) {
           if (refIds.count(binding.first)) {
-            for (ValPtr& boundVal : binding.second) {
+            for (const ValPtr& boundVal : binding.second) {
               s2.data[binding.first].insert(boundVal);
             }
           }
@@ -477,6 +475,7 @@ namespace logic {
     if (has_match) {
       return this->body->eval(s2, w);
     }
+    return ValSet();
   }
   bool Constrain::operator==(const Value& other) const {
     if (const Constrain *s = dynamic_cast<const Constrain *>(&other)) {
@@ -489,4 +488,8 @@ namespace logic {
   std::size_t Constrain::hash() const {
     return 28148592 ^ this->constraint->hash() ^ this->body->hash();
   }
+}
+
+int main(void) {
+  return 0;
 }
