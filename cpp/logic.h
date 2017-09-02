@@ -1,3 +1,6 @@
+#ifndef __SPE_LOGIC_H
+#define __SPE_LOGIC_H
+
 #include <string>
 #include <memory>
 #include <iostream>
@@ -228,3 +231,5 @@ namespace logic {
     void collectRefIds(std::unordered_set<SymId>& s) const override;
   };
 }
+
+#endif
