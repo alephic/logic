@@ -228,5 +228,3 @@ namespace logic {
     void collectRefIds(std::unordered_set<SymId>& s) const override;
   };
 }
-
-int main(void);

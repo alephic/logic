@@ -513,7 +513,3 @@ namespace logic {
     this->body->collectRefIds(refIds);
   }
 }
-
-int main(void) {
-  return 0;
-}
