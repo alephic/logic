@@ -179,6 +179,7 @@ namespace logic {
     ValSet subst(Scope& s) const override;
     bool operator==(const Value& other) const override;
     std::size_t hash() const override;
+    void collectRefIds(std::unordered_set<SymId>& s) const override;
   };
 
   class Apply: public Value {
@@ -193,6 +194,8 @@ namespace logic {
     ValSet eval(Scope& s, const World& w) const override;
     bool operator==(const Value& other) const override;
     std::size_t hash() const override;
+    void flatten(std::vector<ValPtr>& v) const override;
+    void collectRefIds(std::unordered_set<SymId>& s) const override;
   };
 
   class Declare: public Value {
@@ -207,6 +210,7 @@ namespace logic {
     ValSet eval(Scope& s, const World& w) const override;
     bool operator==(const Value& other) const override;
     std::size_t hash() const override;
+    void collectRefIds(std::unordered_set<SymId>& s) const override;
   };
 
   class Constrain: public Value {
@@ -221,6 +225,7 @@ namespace logic {
     ValSet eval(Scope& s, const World& w) const override;
     bool operator==(const Value& other) const override;
     std::size_t hash() const override;
+    void collectRefIds(std::unordered_set<SymId>& s) const override;
   };
 }
 

@@ -324,6 +324,14 @@ namespace logic {
   std::size_t Lambda::hash() const {
     return 195218521 ^ this->id;
   }
+  void Lambda::collectRefIds(std::unordered_set<SymId>& refIds) const {
+    if (refIds.count(this->arg_id)) {
+      this->body->collectRefIds(refIds);
+    } else {
+      this->body->collectRefIds(refIds);
+      refIds.erase(this->arg_id);
+    }
+  }
 
   Apply::Apply(const ValPtr& pred, const ValPtr& arg) : pred(pred), arg(arg) {}
   void Apply::repr(std::ostream& o) const {
@@ -383,6 +391,14 @@ namespace logic {
   std::size_t Apply::hash() const {
     return 9858124 ^ this->pred->hash() ^ this->arg->hash();
   }
+  void Apply::flatten(std::vector<ValPtr>& v) const {
+    this->pred->flatten(v);
+    this->arg->flatten(v);
+  }
+  void Apply::collectRefIds(std::unordered_set<SymId>& refIds) const {
+    this->pred->collectRefIds(refIds);
+    this->arg->collectRefIds(refIds);
+  }
 
   Declare::Declare(const ValPtr& with, const ValPtr& body) : with(with), body(body) {}
   void Declare::repr(std::ostream& o) const {
@@ -425,6 +441,10 @@ namespace logic {
   }
   std::size_t Declare::hash() const {
     return 2958125 ^ this->with->hash() ^ this->body->hash();
+  }
+  void Declare::collectRefIds(std::unordered_set<SymId>& refIds) const {
+    this->with->collectRefIds(refIds);
+    this->body->collectRefIds(refIds);
   }
 
   Constrain::Constrain(const ValPtr& constraint, const ValPtr& body) : constraint(constraint), body(body) {}
@@ -487,6 +507,10 @@ namespace logic {
   }
   std::size_t Constrain::hash() const {
     return 28148592 ^ this->constraint->hash() ^ this->body->hash();
+  }
+  void Constrain::collectRefIds(std::unordered_set<SymId>& refIds) const {
+    this->constraint->collectRefIds(refIds);
+    this->body->collectRefIds(refIds);
   }
 }
 
