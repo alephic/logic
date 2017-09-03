@@ -6,6 +6,8 @@
 
 int main(int argc, char** argv) {
   std::string lineStr;
+  logic::Scope s;
+  logic::World w;
   while (true) {
     std::cout << '>' << ' ';
     std::getline(std::cin, lineStr);
@@ -15,8 +17,10 @@ int main(int argc, char** argv) {
     std::stringstream lineStream(lineStr);
     logic::ValPtr expr = parse::parse(lineStream);
     if (expr) {
-      expr->repr(std::cout);
-      std::cout << std::endl;
+      for (logic::ValPtr val : expr->eval(s, w)) {
+        val->repr(std::cout);
+        std::cout << std::endl;
+      }
     } else {
       std::cout << "Syntax error" << std::endl;
     }

@@ -14,6 +14,7 @@ namespace std {
 
 namespace logic {
 
+  ValSet EMPTY;
   Scope::Scope() : base{nullptr} {}
   Scope::Scope(Scope *base) : base{base} {}
   void Scope::add(const SymId& k, ValSet& vs) {
@@ -24,6 +25,8 @@ namespace logic {
       return this->data.at(k);
     } else if (this->base) {
       return this->base->get(k);
+    } else {
+      return EMPTY;
     }
   }
   bool Scope::has(const SymId& k) const {
@@ -102,8 +105,8 @@ namespace logic {
     }
     this->data.get_matches(valFlat.begin(), valFlat.end(), Scope(), out);
   }
-  World::World() {}
-  World::World(const World *base) : base(base) {}
+  World::World() : base{nullptr} {}
+  World::World(const World *base) : base{base} {}
   void World::add(ValPtr& p) {
     this->data.add(p);
   }
