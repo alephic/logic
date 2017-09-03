@@ -1,4 +1,2 @@
 *.pyc
 .vscode/
-cpp/*.o
-cpp/bin/*
