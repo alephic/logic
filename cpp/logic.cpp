@@ -14,20 +14,20 @@ namespace std {
 
 namespace logic {
 
-  Scope::Scope() {}
-  Scope::Scope(Scope *base): base(base) {}
+  Scope::Scope() : base{nullptr} {}
+  Scope::Scope(Scope *base) : base{base} {}
   void Scope::add(const SymId& k, ValSet& vs) {
     this->data[k] = vs;
   }
   ValSet& Scope::get(const SymId& k) {
     if (this->data.count(k)) {
       return this->data.at(k);
-    } else {
+    } else if (this->base) {
       return this->base->get(k);
     }
   }
   bool Scope::has(const SymId& k) const {
-    return this->data.count(k) || this->base->has(k);
+    return this->data.count(k) || (this->base != nullptr && this->base->has(k));
   }
   void Scope::squash_(std::unordered_map<SymId, ValSet>& out) {
     if (this->base != nullptr) {

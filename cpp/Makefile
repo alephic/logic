@@ -1,5 +1,5 @@
 CC = clang++
-CFLAGS = -Wall -std=c++14
+CFLAGS = -Wall -g -std=c++14
 
 repl: repl.o parse.o logic.o
 	$(CC) $(CFLAGS) repl.o parse.o logic.o -o bin/repl

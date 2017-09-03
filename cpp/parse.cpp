@@ -1,5 +1,6 @@
 #include "parse.h"
 #include <sstream>
+#include <iostream>
 
 namespace parse {
   
@@ -20,6 +21,7 @@ namespace parse {
     case '\r':
     case '\n':
     case '\f':
+    case EOF:
       return false;
     default:
       return true;
@@ -29,7 +31,7 @@ namespace parse {
   logic::SymId parseSymId(std::istream& i) {
     std::stringstream ss;
     while (isSymChar(i.peek())) {
-      ss << i.get();
+      ss << (char) i.get();
     }
     return ss.str();
   }
@@ -106,7 +108,7 @@ namespace parse {
       if (i.peek() == '}') {
         i.get();
         skipWhitespace(i);
-        if (logic::ValPtr body=parse(i, refIds)) {
+        if (logic::ValPtr body = parse(i, refIds)) {
           return logic::bundle(new logic::Declare(with, body));
         }
       } else {
@@ -121,6 +123,9 @@ namespace parse {
       return logic::Arbitrary::INSTANCE;
     default:
       logic::SymId symId = parseSymId(i);
+      if (symId.size() == 0) {
+        return logic::ValPtr();
+      }
       if (refIds.has(symId)) {
         return logic::bundle(new logic::Ref(symId));
       } else {
@@ -136,6 +141,9 @@ namespace parse {
 
   logic::ValPtr parse(std::istream& i, logic::Scope& refIds) {
     logic::ValPtr curr = parse_not_apply(i, refIds);
+    if (!curr) {
+      return curr;
+    }
     while (true) {
       skipWhitespace(i);
       logic::ValPtr next = parse_not_apply(i, refIds);
