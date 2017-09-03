@@ -17,7 +17,8 @@ int main(int argc, char** argv) {
     std::stringstream lineStream(lineStr);
     logic::ValPtr expr = parse::parse(lineStream);
     if (expr) {
-      for (logic::ValPtr val : expr->eval(s, w)) {
+      logic::ValSet evald = expr->eval(s, w);
+      for (logic::ValPtr val : evald) {
         val->repr(std::cout);
         std::cout << std::endl;
       }

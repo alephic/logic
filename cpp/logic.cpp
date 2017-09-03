@@ -128,7 +128,7 @@ namespace logic {
   void Sym::repr(std::ostream& o) const {
     o << this->sym_id;
   }
-  ValSet Sym::subst(Scope& s) const {
+  ValSet Sym::subst(Scope& s) {
     return ValSet({this->self.lock()}, 1);
   }
   bool Sym::operator==(const Value& other) const {
@@ -147,7 +147,7 @@ namespace logic {
   void Wildcard::repr(std::ostream& o) const {
     o << '*';
   }
-  ValSet Wildcard::subst(Scope& s) const {
+  ValSet Wildcard::subst(Scope& s) {
     return ValSet({this->self.lock()}, 1);
   }
   bool Wildcard::operator==(const Value& other) const {
@@ -166,7 +166,7 @@ namespace logic {
   void WildcardTrace::repr(std::ostream& o) const {
     o << '*';
   }
-  ValSet WildcardTrace::subst(Scope& s) const {
+  ValSet WildcardTrace::subst(Scope& s) {
     if (s.has(this->ref_id)) {
       return s.get(this->ref_id);
     }
@@ -205,7 +205,7 @@ namespace logic {
   void Ref::repr(std::ostream& o) const {
     o << this->ref_id;
   }
-  ValSet Ref::subst(Scope& s) const {
+  ValSet Ref::subst(Scope& s) {
     if (s.has(this->ref_id)) {
       ValSet& vs = s.get(this->ref_id);
       if (vs.count(Wildcard::INSTANCE)) {
@@ -251,10 +251,10 @@ namespace logic {
   void Arbitrary::repr(std::ostream& o) const {
     o << '?';
   }
-  ValSet Arbitrary::subst(Scope& s) const {
+  ValSet Arbitrary::subst(Scope& s) {
     return ValSet({this->self.lock()}, 1);
   }
-  ValSet Arbitrary::eval(Scope& s, const World& w) const {
+  ValSet Arbitrary::eval(Scope& s, const World& w) {
     return ValSet({bundle(new ArbitraryInstance())}, 1);
   }
   bool Arbitrary::operator==(const Value& other) const {
@@ -277,7 +277,7 @@ namespace logic {
   void ArbitraryInstance::repr(std::ostream& o) const {
     o << '?' << id;
   }
-  ValSet ArbitraryInstance::subst(Scope& s) const {
+  ValSet ArbitraryInstance::subst(Scope& s) {
     return ValSet({this->self.lock()}, 1);
   }
   bool ArbitraryInstance::operator==(const Value& other) const {
@@ -306,7 +306,21 @@ namespace logic {
     this->repr(o);
     o << ')';
   }
-  ValSet Lambda::subst(Scope& s) const {
+  ValSet Lambda::subst(Scope& s) {
+    if (!this->savedRefIds) {
+      this->savedRefIds = std::shared_ptr<std::unordered_set<SymId>>(new std::unordered_set<SymId>());
+      this->collectRefIds(*this->savedRefIds);
+    }
+    bool disjoint = true;
+    for (const SymId& refId : *this->savedRefIds) {
+      if (s.has(refId)) {
+        disjoint = false;
+        break;
+      }
+    }
+    if (disjoint) {
+      return ValSet({this->self.lock()}, 1);
+    }
     Shadow sh = Shadow(&s);
     sh.shadow(this->arg_id);
     ValSet bodySubstdVals = this->body->subst(sh);
@@ -353,7 +367,21 @@ namespace logic {
     this->repr(o);
     o << ')';
   }
-  ValSet Apply::subst(Scope& s) const {
+  ValSet Apply::subst(Scope& s) {
+    if (!this->savedRefIds) {
+      this->savedRefIds = std::shared_ptr<std::unordered_set<SymId>>(new std::unordered_set<SymId>());
+      this->collectRefIds(*this->savedRefIds);
+    }
+    bool disjoint = true;
+    for (const SymId& refId : *this->savedRefIds) {
+      if (s.has(refId)) {
+        disjoint = false;
+        break;
+      }
+    }
+    if (disjoint) {
+      return ValSet({this->self.lock()}, 1);
+    }
     ValSet predVals = this->pred->subst(s);
     ValSet argVals = this->arg->subst(s);
     ValSet res(predVals.bucket_count()*argVals.bucket_count());
@@ -364,7 +392,7 @@ namespace logic {
     }
     return res;
   }
-  ValSet Apply::eval(Scope& s, const World& w) const {
+  ValSet Apply::eval(Scope& s, const World& w) {
     ValSet predVals = this->pred->eval(s, w);
     ValSet argVals = this->arg->eval(s, w);
     ValSet res(predVals.bucket_count()*argVals.bucket_count());
@@ -415,7 +443,21 @@ namespace logic {
     this->repr(o);
     o << ')';
   }
-  ValSet Declare::subst(Scope& s) const {
+  ValSet Declare::subst(Scope& s) {
+    if (!this->savedRefIds) {
+      this->savedRefIds = std::shared_ptr<std::unordered_set<SymId>>(new std::unordered_set<SymId>());
+      this->collectRefIds(*this->savedRefIds);
+    }
+    bool disjoint = true;
+    for (const SymId& refId : *this->savedRefIds) {
+      if (s.has(refId)) {
+        disjoint = false;
+        break;
+      }
+    }
+    if (disjoint) {
+      return ValSet({this->self.lock()}, 1);
+    }
     ValSet withVals = this->with->subst(s);
     ValSet bodyVals = this->body->subst(s);
     ValSet res(withVals.bucket_count()*bodyVals.bucket_count());
@@ -426,7 +468,7 @@ namespace logic {
     }
     return res;
   }
-  ValSet Declare::eval(Scope& s, const World& w) const {
+  ValSet Declare::eval(Scope& s, const World& w) {
     ValSet withVals = this->with->eval(s, w);
     World w2 = World(&w);
     for (ValPtr withVal : withVals) {
@@ -462,7 +504,21 @@ namespace logic {
     this->repr(o);
     o << ')';
   }
-  ValSet Constrain::subst(Scope& s) const {
+  ValSet Constrain::subst(Scope& s) {
+    if (!this->savedRefIds) {
+      this->savedRefIds = std::shared_ptr<std::unordered_set<SymId>>(new std::unordered_set<SymId>());
+      this->collectRefIds(*this->savedRefIds);
+    }
+    bool disjoint = true;
+    for (const SymId& refId : *this->savedRefIds) {
+      if (s.has(refId)) {
+        disjoint = false;
+        break;
+      }
+    }
+    if (disjoint) {
+      return ValSet({this->self.lock()}, 1);
+    }
     ValSet constraintVals = this->constraint->subst(s);
     ValSet bodyVals = this->body->subst(s);
     ValSet res(constraintVals.bucket_count()*bodyVals.bucket_count());
@@ -473,7 +529,7 @@ namespace logic {
     }
     return res;
   }
-  ValSet Constrain::eval(Scope& s, const World& w) const {
+  ValSet Constrain::eval(Scope& s, const World& w) {
     ValSet constraintVals = this->constraint->eval(s, w);
     Scope s2 = Scope(&s);
     std::unordered_set<SymId> refIds;

@@ -13,7 +13,7 @@ namespace logic {
   
   class Value;
 
-  typedef std::shared_ptr<const Value> ValPtr;
+  typedef std::shared_ptr<Value> ValPtr;
 
 }
 
@@ -31,7 +31,7 @@ namespace std {
 
 namespace logic {
   
-  typedef std::weak_ptr<const Value> ValPtrWeak;
+  typedef std::weak_ptr<Value> ValPtrWeak;
   
   typedef std::string SymId;
   typedef std::unordered_set<ValPtr> ValSet;
@@ -88,8 +88,8 @@ namespace logic {
     ValPtrWeak self;
     virtual void repr(std::ostream&) const = 0;
     virtual void repr_closed(std::ostream& o) const {this->repr(o);}
-    virtual ValSet subst(Scope&) const = 0;
-    virtual ValSet eval(Scope& s, const World& w) const {return this->subst(s);}
+    virtual ValSet subst(Scope&) = 0;
+    virtual ValSet eval(Scope& s, const World& w) {return this->subst(s);}
     virtual bool match(const ValPtr& other, Scope&) const {return *this == *other;}
     virtual bool operator==(const Value&) const = 0;
     virtual std::size_t hash() const = 0;
@@ -105,7 +105,7 @@ namespace logic {
   public:
     Sym(const SymId &sym_id);
     void repr(std::ostream& o) const override;
-    ValSet subst(Scope& s) const override;
+    ValSet subst(Scope& s) override;
     bool operator==(const Value& other) const override;
     std::size_t hash() const override;
   };
@@ -115,7 +115,7 @@ namespace logic {
     static ValPtr INSTANCE;
     Wildcard();
     void repr(std::ostream& o) const override;
-    ValSet subst(Scope& s) const override;
+    ValSet subst(Scope& s) override;
     bool operator==(const Value& other) const override;
     std::size_t hash() const override;
   };
@@ -126,7 +126,7 @@ namespace logic {
   public:
     WildcardTrace(const SymId& ref_id);
     void repr(std::ostream& o) const override;
-    ValSet subst(Scope& s) const override;
+    ValSet subst(Scope& s) override;
     bool match(const ValPtr& other, Scope& s) const override;
     bool operator==(const Value& other) const override;
     std::size_t hash() const override;
@@ -139,7 +139,7 @@ namespace logic {
   public:
     Ref(const SymId& ref_id);
     void repr(std::ostream& o) const override;
-    ValSet subst(Scope& s) const override;
+    ValSet subst(Scope& s) override;
     bool match(const ValPtr& other, Scope& s) const override;
     bool operator==(const Value& other) const override;
     std::size_t hash() const override;
@@ -151,8 +151,8 @@ namespace logic {
     static ValPtr INSTANCE;
     Arbitrary();
     void repr(std::ostream& o) const override;
-    ValSet subst(Scope& s) const override;
-    ValSet eval(Scope& s, const World& w) const override;
+    ValSet subst(Scope& s) override;
+    ValSet eval(Scope& s, const World& w) override;
     bool operator==(const Value& other) const override;
     std::size_t hash() const override;
   };
@@ -164,7 +164,7 @@ namespace logic {
   public:
     ArbitraryInstance();
     void repr(std::ostream& o) const override;
-    ValSet subst(Scope& s) const override;
+    ValSet subst(Scope& s) override;
     bool operator==(const Value& other) const override;
     std::size_t hash() const override;
   };
@@ -173,13 +173,14 @@ namespace logic {
   private:
     static std::size_t count;
     std::size_t id;
+    std::shared_ptr<std::unordered_set<SymId>> savedRefIds;
   public:
     const SymId arg_id;
     const ValPtr body;
     Lambda(const SymId& arg_id, const ValPtr& body);
     void repr(std::ostream& o) const override;
     void repr_closed(std::ostream& o) const override;
-    ValSet subst(Scope& s) const override;
+    ValSet subst(Scope& s) override;
     bool operator==(const Value& other) const override;
     std::size_t hash() const override;
     void collectRefIds(std::unordered_set<SymId>& s) const override;
@@ -189,12 +190,13 @@ namespace logic {
   private:
     const ValPtr pred;
     const ValPtr arg;
+    std::shared_ptr<std::unordered_set<SymId>> savedRefIds;
   public:
     Apply(const ValPtr& pred, const ValPtr& arg);
     void repr(std::ostream& o) const override;
     void repr_closed(std::ostream& o) const override;
-    ValSet subst(Scope& s) const override;
-    ValSet eval(Scope& s, const World& w) const override;
+    ValSet subst(Scope& s) override;
+    ValSet eval(Scope& s, const World& w) override;
     bool operator==(const Value& other) const override;
     std::size_t hash() const override;
     void flatten(std::vector<ValPtr>& v) const override;
@@ -205,12 +207,13 @@ namespace logic {
   private:
     const ValPtr with;
     const ValPtr body;
+    std::shared_ptr<std::unordered_set<SymId>> savedRefIds;
   public:
     Declare(const ValPtr& with, const ValPtr& body);
     void repr(std::ostream& o) const override;
     void repr_closed(std::ostream& o) const override;
-    ValSet subst(Scope& s) const override;
-    ValSet eval(Scope& s, const World& w) const override;
+    ValSet subst(Scope& s) override;
+    ValSet eval(Scope& s, const World& w) override;
     bool operator==(const Value& other) const override;
     std::size_t hash() const override;
     void collectRefIds(std::unordered_set<SymId>& s) const override;
@@ -220,12 +223,13 @@ namespace logic {
   private:
     const ValPtr constraint;
     const ValPtr body;
+    std::shared_ptr<std::unordered_set<SymId>> savedRefIds;
   public:
     Constrain(const ValPtr& constraint, const ValPtr& body);
     void repr(std::ostream& o) const override;
     void repr_closed(std::ostream& o) const override;
-    ValSet subst(Scope& s) const override;
-    ValSet eval(Scope& s, const World& w) const override;
+    ValSet subst(Scope& s) override;
+    ValSet eval(Scope& s, const World& w) override;
     bool operator==(const Value& other) const override;
     std::size_t hash() const override;
     void collectRefIds(std::unordered_set<SymId>& s) const override;
