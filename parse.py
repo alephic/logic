@@ -37,10 +37,6 @@ def parse_sym(t, ref_ids):
     return Ref(s)
   return Sym(s)
 
-def parse_wildcard(t):
-  if parse_re(ASTERISK, t):
-    return WILDCARD
-
 def parse_arbitrary(t):
   if parse_re(QUESTION, t):
     return ARBITRARY
@@ -62,36 +58,6 @@ def parse_lambda(t, ref_ids):
   t.pos = reset
   return None
 
-def parse_constraint(t, ref_ids):
-  reset = t.pos
-  if parse_re(LBRACK, t):
-    parse_re(SPACES, t)
-    m = parse_expr(t, ref_ids)
-    if m:
-      parse_re(SPACES, t)
-      if parse_re(RBRACK, t):
-        parse_re(SPACES, t)
-        m2 = parse_expr(t, ref_ids)
-        if m2:
-          return Constraint(m, m2)
-  t.pos = reset
-  return None
-
-def parse_with(t, ref_ids):
-  reset = t.pos
-  if parse_re(LBRACE, t):
-    parse_re(SPACES, t)
-    m = parse_expr(t, ref_ids)
-    if m:
-      parse_re(SPACES, t)
-      if parse_re(RBRACE, t):
-        parse_re(SPACES, t)
-        m2 = parse_expr(t, ref_ids)
-        if m2:
-          return With(m, m2)
-  t.pos = reset
-  return None
-
 def parse_expr(t, ref_ids):
   reset = t.pos
   curr = parse_expr_not_apply(t, ref_ids)
@@ -109,8 +75,6 @@ def parse_expr(t, ref_ids):
 def parse_expr_not_apply(t, ref_ids):
   return parse_paren_expr(t, ref_ids) \
     or parse_lambda(t, ref_ids) \
-    or parse_constraint(t, ref_ids) \
-    or parse_with(t, ref_ids) \
     or parse_sym(t, ref_ids) \
     or parse_wildcard(t) \
     or parse_arbitrary(t)
