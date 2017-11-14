@@ -73,7 +73,7 @@ class ArbitraryVal(Expression):
 
 class Arbitrary(Expression):
   def subst(self, bindings):
-    yield self
+    return self
   def match(self, other, bindings):
     return self.__eq__(other)
   def evaluate(self, bindings, world):
@@ -140,8 +140,7 @@ class Lambda(Expression):
   def subst(self, bindings):
     shadow = Shadow(bindings)
     shadow.shadowed[self.arg_id] = True
-    for b in self.body.subst(shadow):
-      yield Lambda(self.arg_id, b)
+    return Lambda(self.arg_id, self.body.subst(shadow))
   def match(self, other, bindings):
     return False
   def __eq__(self, other):
@@ -166,10 +165,7 @@ class Apply(Expression):
   def repr_closed(self):
     return '('+repr(self)+')'
   def subst(self, bindings):
-    a = list(self.arg_expr.subst(bindings))
-    for p_v in self.pred_expr.subst(bindings):
-      for a_v in a:
-        yield Apply(p_v, a_v)
+    return Apply(self.pred_expr.subst(bindings), self.arg_expr.subst(bindings))
   def match(self, other, bindings):
     return isinstance(other, Apply) \
       and self.pred_expr.match(other.pred_expr, bindings) \
