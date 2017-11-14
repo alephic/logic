@@ -53,8 +53,6 @@ class Expression:
   def collect_ref_ids(self, ref_ids):
     raise NotImplementedError()
 
-WILDCARD = Wildcard()
-
 class ArbitraryVal(Expression):
   counter = 0
   def __init__(self):
@@ -115,7 +113,7 @@ class Ref(Expression):
     return str(self.ref_id)
   def subst(self, bindings):
     if self.ref_id in bindings:
-      return bindings[self.ref_id]:
+      return bindings[self.ref_id]
     else:
       return self
   def match(self, other, bindings):
@@ -177,7 +175,14 @@ class Apply(Expression):
       and self.pred_expr.match(other.pred_expr, bindings) \
       and self.arg_expr.match(other.arg_expr, bindings)
   def evaluate(self, bindings, world):
-    pass
+    p_v = self.pred_expr.evaluate(bindings, world)
+    a_v = self.arg_expr.evaluate(bindings, world)
+    if isinstance(p_v, Lambda):
+      s = Scope(bindings)
+      s[p_v.arg_id] = a_v
+      return p_v.body.evaluate(s, world)
+    else:
+      return Apply(p_v, a_v)
   def __eq__(self, other):
     return isinstance(other, Apply) and self.pred_expr == other.pred_expr and self.arg_expr == other.arg_expr
   def __hash__(self):

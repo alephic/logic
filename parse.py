@@ -76,7 +76,6 @@ def parse_expr_not_apply(t, ref_ids):
   return parse_paren_expr(t, ref_ids) \
     or parse_lambda(t, ref_ids) \
     or parse_sym(t, ref_ids) \
-    or parse_wildcard(t) \
     or parse_arbitrary(t)
 
 def parse_paren_expr(t, ref_ids):

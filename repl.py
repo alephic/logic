@@ -5,7 +5,7 @@ import readline
 
 def repl():
   bindings = {}
-  world = World()
+  world = None
   while True:
     i = input('> ')
     if len(i) > 0:
